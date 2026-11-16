@@ -14,7 +14,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
-import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
+import { Field, FieldGroup, FieldLabel, FieldSeparator } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '@/components/ui/input-group';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -31,6 +31,8 @@ import { confirmDialog } from '@/components/confirm';
 import { bg, copyText, download, openSearch, store, today } from '@/lib/ext';
 import { useNav } from '@/lib/nav';
 import { useExtData } from '@/hooks/use-ext-data';
+import { useSerp } from '@/hooks/use-serp';
+import { importSerp, type SerpInfo } from '@/lib/serp';
 import { cn } from '@/lib/utils';
 import { STATUSES } from '@ext/defaults.js';
 import { fmtDate, lines, timeAgo, toCsv, toUrl, uniq } from '@ext/util.js';
@@ -151,6 +153,7 @@ export function SitesView() {
     (k) => k.startsWith('site:') || k.startsWith('quest:'),
   );
 
+  const [serp] = useSerp();
   React.useEffect(() => { saved = F; }, [F]);
   const set = (p: Partial<Filters>) => { setF((f) => ({ ...f, ...p })); setLimit(150); };
 
@@ -203,6 +206,8 @@ export function SitesView() {
           </>
         }
       />
+
+      {serp?.results.length ? <SerpImport serp={serp} /> : null}
 
       {/* Toolbar */}
       <div className="flex flex-col gap-2">
@@ -622,13 +627,52 @@ function SiteDetail({ s, qmap, onClose }: { s: Site; qmap: Map<string, Quest>; o
   );
 }
 
+// ----------------------------------------------------------------- google results import
+
+function SerpImport({ serp, opts, onDone }: { serp: SerpInfo; opts?: { questId?: string | null; scan?: boolean }; onDone?: () => void }) {
+  const [busy, setBusy] = React.useState(false);
+  const run = async () => {
+    setBusy(true);
+    try {
+      const r = await importSerp(serp, opts);
+      toast.success(`Imported ${r.added.length} from Google`, { description: r.dupes.length ? `${r.dupes.length} were already saved` : undefined });
+      onDone?.();
+    } catch (e) {
+      toast.error('Import failed', { description: String((e as Error).message) });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="flex items-center gap-3 rounded-xl border bg-muted/40 py-2 pr-2 pl-3">
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-background"><SearchIcon className="size-4" /></span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5 text-sm font-medium">
+          Google results
+          <Tooltip>
+            <TooltipTrigger asChild><span className="text-xs font-normal text-muted-foreground tabular-nums">{serp.fresh}/{serp.results.length} new</span></TooltipTrigger>
+            <TooltipContent>Results on the page you haven’t saved yet</TooltipContent>
+          </Tooltip>
+        </div>
+        <div className="truncate font-mono text-xs text-muted-foreground" title={serp.query}>{serp.query}</div>
+      </div>
+      <Button type="button" size="sm" disabled={!serp.fresh || busy} onClick={run}>
+        {busy ? <Spinner data-icon="inline-start" /> : <DownloadIcon data-icon="inline-start" />}
+        {serp.fresh ? `Import ${serp.fresh}` : 'All saved'}
+      </Button>
+    </div>
+  );
+}
+
 // ----------------------------------------------------------------- add urls
 
 function AddUrlsDialog({ open, onOpenChange, quests }: { open: boolean; onOpenChange: (o: boolean) => void; quests: Quest[] }) {
   const [text, setText] = React.useState('');
   const [questId, setQuestId] = React.useState('none');
   const [scan, setScan] = React.useState(true);
+  const [serp, refreshSerp] = useSerp(open);
   const valid = lines(text).map(toUrl).filter(Boolean) as string[];
+  React.useEffect(() => { if (open) refreshSerp(); }, [open, refreshSerp]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -645,6 +689,17 @@ function AddUrlsDialog({ open, onOpenChange, quests }: { open: boolean; onOpenCh
         <form onSubmit={submit} className="flex flex-col gap-5">
           <DialogHeader><DialogTitle>Add sites</DialogTitle></DialogHeader>
           <FieldGroup className="gap-4">
+            {serp?.results.length ? (
+              <>
+                <SerpImport serp={serp} opts={{ questId: questId === 'none' ? null : questId, scan }} onDone={() => onOpenChange(false)} />
+                <FieldSeparator className="-my-1 text-xs">or paste URLs</FieldSeparator>
+              </>
+            ) : (
+              <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                <SearchIcon className="size-3.5" />
+                {serp?.captcha ? 'The open Google tab shows a CAPTCHA.' : 'Open a Google results page to import it here.'}
+              </p>
+            )}
             <Field className="gap-1.5">
               <div className="flex items-center gap-2">
                 <FieldLabel htmlFor="urls">URLs</FieldLabel>

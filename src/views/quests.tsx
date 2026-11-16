@@ -2,7 +2,7 @@ import * as React from 'react';
 import { toast } from 'sonner';
 import {
   ArrowLeftIcon, CheckIcon, ChevronRightIcon, CircleCheckIcon, CircleIcon, CopyIcon, CopyPlusIcon, GlobeIcon, MailIcon,
-  MapIcon, MoreHorizontalIcon, PencilIcon, PlusIcon, RotateCcwIcon, SearchIcon, Trash2Icon, XIcon,
+  MapIcon, MapPinIcon, MoreHorizontalIcon, PencilIcon, PlusIcon, RotateCcwIcon, SearchIcon, Trash2Icon, XIcon,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -19,6 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { IconAction, PageHeader, Stat } from '@/components/common';
+import { CityPicker } from '@/components/city-picker';
 import { confirmDialog } from '@/components/confirm';
 import { copyText, openSearch, store } from '@/lib/ext';
 import { useNav } from '@/lib/nav';
@@ -202,6 +203,9 @@ function QuestDetail({ quest: q, sites, onBack, onOpen }: { quest: Quest; sites:
           <Badge variant="secondary" className="tabular-nums">{total}</Badge>
           <div className="ml-auto flex items-center gap-0.5">
             {total ? <IconAction label="Reset all to pending" icon={RotateCcwIcon} onClick={() => save({ locations: q.locations.map((l) => ({ ...l, status: 'pending' })) })} /> : null}
+            <CityPicker existing={q.locations.map((l) => l.value)} onAdd={addLocs}>
+              <Button size="sm" variant="ghost"><MapPinIcon data-icon="inline-start" />US cities</Button>
+            </CityPicker>
             <AddLocations onAdd={addLocs} />
           </div>
         </CardHeader>

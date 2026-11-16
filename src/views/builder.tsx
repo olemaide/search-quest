@@ -2,7 +2,7 @@ import * as React from 'react';
 import { toast } from 'sonner';
 import {
   CalendarRangeIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, CopyIcon, EraserIcon, FileStackIcon,
-  MapPlusIcon, PencilLineIcon, SaveIcon, SearchIcon, Settings2Icon, TriangleAlertIcon, XIcon,
+  MapPinIcon, MapPlusIcon, PencilLineIcon, SaveIcon, SearchIcon, Settings2Icon, TriangleAlertIcon, XIcon,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -23,6 +23,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Alert, AlertAction, AlertTitle } from '@/components/ui/alert';
 import { ChipInput, IconAction, InfoTip, SlotDot } from '@/components/common';
+import { CityPicker } from '@/components/city-picker';
 import { confirmDialog } from '@/components/confirm';
 import { copyText, openSearch, store } from '@/lib/ext';
 import { useNav } from '@/lib/nav';
@@ -286,6 +287,10 @@ function SlotsCard({ st, setSt, patch }: { st: BuilderState; setSt: (s: BuilderS
               </Tooltip>
             ) : k === 'signals' ? (
               <YearPopover onAdd={(terms) => setSt({ ...st, signals: uniq([...st.signals, ...terms]) as string[] })} />
+            ) : k === 'location' ? (
+              <CityPicker existing={st.location} onAdd={(labels) => setSt({ ...st, location: uniq([...st.location, ...labels]) as string[] })}>
+                <Button variant="ghost" size="xs" className="text-muted-foreground"><MapPinIcon data-icon="inline-start" />US cities</Button>
+              </CityPicker>
             ) : null))}
 
           <Collapsible open={more} onOpenChange={setMore}>
@@ -428,17 +433,16 @@ function Palette({ blocks, st, setSt, onManage }: { blocks: Block[]; st: Builder
 function SaveQuestDialog({ open, onOpenChange, st, onCreated }: { open: boolean; onOpenChange: (o: boolean) => void; st: BuilderState; onCreated: (id: string) => void }) {
   const [name, setName] = React.useState('');
   const [locs, setLocs] = React.useState('');
-  const [list, setList] = React.useState('none');
 
   React.useEffect(() => {
     if (!open) return;
     setName(defaultName(st, false));
     setLocs(st.location.join('\n'));
-    setList('none');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  const values = uniq([...lines(locs), ...(CITIES[list] || [])]) as string[];
+  const values = uniq(lines(locs)) as string[];
+  const append = (more: string[]) => setLocs((cur) => (uniq([...lines(cur), ...more]) as string[]).join('\n'));
 
   const create = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -466,14 +470,18 @@ function SaveQuestDialog({ open, onOpenChange, st, onCreated }: { open: boolean;
                 <InfoTip>One search per line: each replaces the Location slot. Leave empty to run the query as built.</InfoTip>
                 <span className="ml-auto text-xs text-muted-foreground tabular-nums">{values.length}</span>
               </div>
-              <Textarea id="q-locs" rows={5} value={locs} onChange={(e) => setLocs(e.target.value)} placeholder={'Dayton, OH\n45402\nMontgomery County'} />
-              <Select value={list} onValueChange={setList}>
-                <SelectTrigger size="sm" className="w-full" aria-label="Add a city list"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">+ City list</SelectItem>
-                  {Object.entries(CITIES).map(([k, v]) => <SelectItem key={k} value={k}>{k} ({v.length})</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <Textarea id="q-locs" rows={6} value={locs} onChange={(e) => setLocs(e.target.value)} placeholder={'Dayton, OH\n45402\nMontgomery County'} />
+              <div className="grid grid-cols-2 gap-2">
+                <CityPicker existing={values} align="start" onAdd={append}>
+                  <Button type="button" variant="outline" size="sm"><MapPinIcon data-icon="inline-start" />Pick US cities</Button>
+                </CityPicker>
+                <Select value="" onValueChange={(k) => append(CITIES[k] || [])}>
+                  <SelectTrigger size="sm" className="w-full" aria-label="Add a city list"><SelectValue placeholder="+ City list" /></SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(CITIES).map(([k, v]) => <SelectItem key={k} value={k}>{k} ({v.length})</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
             </Field>
           </FieldGroup>
           <DialogFooter>

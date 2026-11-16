@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import * as store from '@ext/store.js';
 import { googleUrl } from '@ext/query.js';
 import { confirmDialog } from '@/components/confirm';
+import { importSerp, isSerpUrl, readSerp } from '@/lib/serp';
 import type { Settings } from '@/types';
 
 export { store };
@@ -50,8 +51,16 @@ export async function saveCurrentTab() {
     toast.error('Open a website tab first.');
     return;
   }
-  if (/^https:\/\/www\.google\.[a-z.]+\/search/.test(tab.url)) {
-    toast.info('That’s a Google results page. Use the Save buttons on the page instead.');
+  if (isSerpUrl(tab.url) && tab.id != null) {
+    // On a Google results page: import every organic result instead of the Google URL itself.
+    try {
+      const serp = await readSerp(tab.id);
+      if (!serp?.results.length) { toast.info(serp?.captcha ? 'Google is showing a CAPTCHA.' : 'No results found on this page.'); return; }
+      const r = await importSerp(serp);
+      toast.success(`Imported ${r.added.length} from Google`, { description: r.dupes.length ? `${r.dupes.length} were already saved` : undefined });
+    } catch (e) {
+      toast.error('Could not read the results page', { description: String((e as Error).message) });
+    }
     return;
   }
   try {

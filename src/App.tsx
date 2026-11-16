@@ -67,7 +67,7 @@ export default function App() {
             <Logo />
             <span className="font-heading text-sm font-semibold tracking-tight">SearchQuest</span>
             <div className="ml-auto flex items-center">
-              <IconAction label="Save current tab" icon={BookmarkPlusIcon} side="bottom" onClick={saveCurrentTab} />
+              <IconAction label="Save current tab (on Google: import all results)" icon={BookmarkPlusIcon} side="bottom" onClick={saveCurrentTab} />
               {isPanel ? (
                 <IconAction label="Open in a tab" icon={PanelRightOpenIcon} side="bottom" onClick={() => chrome.tabs.create({ url: chrome.runtime.getURL('app/app.html#' + view) })} />
               ) : null}

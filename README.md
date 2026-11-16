@@ -42,11 +42,13 @@ Pin the extension. Clicking its icon opens SearchQuest in the **side panel**; th
 ## How to use it
 
 1. **Builder.** Pick a template such as *Funeral homes · old copyright* or *Dachdecker · volle Kombination*, or click blocks in the palette. Click **Search Google** for a one-off search.
-2. **Save as quest.** Add locations, one per line, or a ready-made city list (US Midwest & South, Ohio, Ostwestfalen-Lippe, Münsterland). The query's location slot is swapped for each location in turn.
+2. **Save as quest.** Add locations, one per line, use **Pick US cities**, or add a ready-made list (★ Top 20, US Midwest & South, Ohio, Ostwestfalen-Lippe, Münsterland). The query's location slot is swapped for each location in turn.
 3. **Search next.** This opens Google for the next pending location. On the results page, click **+ Save** on promising results or **Save all new**.
 4. **Sites.** Scans run automatically. Sort by *Old-site score*, filter on *Has email*, open a site for details, set its status, then **Copy emails** or **Export CSV**.
 
-You can also save the page in the current tab (**+ Save tab**), right-click any page or link → *Save … to SearchQuest*, or paste a list of URLs (**Sites → + Add URLs**).
+**Importing a whole Google results page.** While a Google results tab is open, the **Sites** page shows a "Google results · N new · Import" bar, and **Sites → Add** offers the same import above the URL box. The bookmark button in the header does it too when the active tab is a Google results page. Ads are skipped, Google's `/url?` redirects are resolved, and results keep their query and snippet. If the query came from a quest, they're tagged with that quest and city. This also works on Google tabs opened before the extension was installed or reloaded.
+
+You can also save the page in the current tab (bookmark button in the header), right-click any page or link → *Save … to SearchQuest*, or paste a list of URLs (**Sites → Add**).
 
 ### Query cheat sheet
 
@@ -66,6 +68,7 @@ Tips:
 
 - Google reads about **32 words** per query, and anything past that is ignored silently. The meter counts for you.
 - Mid-sized cities (100k–500k) in the US Midwest and South tend to have the most old sites.
+- **US city picker**: about 220 independent small and mid-sized cities (25k–250k, 2020 Census, rounded; big-metro suburbs left out). You can filter by region (Midwest, South, Northeast, West) and size, and multi-select. It's available on the Builder's Location slot, in the new-quest dialog and on a quest's Locations list. **★ Top 20** marks suggested starting points: independent regional hubs of roughly 60k–250k in the Midwest and South (Dayton, Akron, Peoria, Evansville, Springfield MO, Cedar Rapids, Green Bay, Knoxville, Shreveport, Waco…). That's a heuristic, so test a few searches before you commit to a list.
 - Industry platforms leave footer credits ("Website by …"). Copy a few from local sites and add them as your own **signal** blocks under *Library → New block*.
 - Check each lead yourself. Some sites have a 2015 footer and a modern design.
 

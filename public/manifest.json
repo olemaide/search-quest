@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "SearchQuest – Lead Search Builder",
   "short_name": "SearchQuest",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Build Google search-operator queries from blocks and templates, run search quests per city, save sites and pull their emails.",
   "minimum_chrome_version": "116",
   "icons": {
@@ -30,7 +30,8 @@
     "storage",
     "unlimitedStorage",
     "sidePanel",
-    "contextMenus"
+    "contextMenus",
+    "scripting"
   ],
   "host_permissions": [
     "<all_urls>"
