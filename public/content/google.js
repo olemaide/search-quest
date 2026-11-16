@@ -16,31 +16,41 @@
   const root = host.attachShadow({ mode: 'open' });
   root.innerHTML = `
     <style>
+      /* shadcn/ui "neutral" tokens, mirrored from src/index.css (kept vanilla: no React on Google pages). */
       :host { all: initial; }
-      .bar { position: fixed; right: 16px; bottom: 16px; z-index: 2147483000; width: 290px;
-        font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; color: #1b1d29;
-        background: #fff; border: 1px solid #dfe1ea; border-radius: 12px;
-        box-shadow: 0 8px 30px rgba(20, 22, 40, .18); overflow: hidden; }
+      .bar { --bg: #fff; --fg: #0a0a0a; --muted: #737373; --border: #e5e5e5; --primary: #171717; --primary-fg: #fafafa;
+        --secondary: #f5f5f5; --ring: #a3a3a3; --radius: 10px;
+        position: fixed; right: 16px; bottom: 16px; z-index: 2147483000; width: 300px;
+        font: 13px/1.45 "Geist Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+        color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: calc(var(--radius) + 4px);
+        box-shadow: 0 10px 30px -10px rgba(0,0,0,.25), 0 2px 6px rgba(0,0,0,.06); overflow: hidden; }
       @media (prefers-color-scheme: dark) {
-        .bar { background: #1b1d27; color: #e7e8ef; border-color: #2f3344; }
-        .sub, .status { color: #9aa0b5 !important; }
-        button.ghost { color: #e7e8ef; border-color: #3a3f52; }
+        .bar { --bg: #171717; --fg: #fafafa; --muted: #a1a1a1; --border: rgba(255,255,255,.1); --primary: #e5e5e5;
+          --primary-fg: #171717; --secondary: #262626; --ring: #737373; }
       }
-      header { display: flex; align-items: center; gap: 8px; padding: 10px 12px 6px; }
+      header { display: flex; align-items: center; gap: 8px; padding: 12px 12px 4px 14px; }
       .logo { width: 18px; height: 18px; border-radius: 5px; background: #4f46e5; color: #fff;
-        display: grid; place-items: center; font-weight: 700; font-size: 11px; }
-      .title { font-weight: 650; flex: 1; }
-      .sub { padding: 0 12px; color: #6b7084; font-size: 12px; }
-      .row { display: flex; gap: 6px; padding: 10px 12px 12px; }
-      button { font: inherit; font-weight: 600; border-radius: 8px; padding: 7px 10px; cursor: pointer;
-        border: 1px solid #4f46e5; background: #4f46e5; color: #fff; }
+        display: grid; place-items: center; font-weight: 700; font-size: 9px; letter-spacing: -.02em; }
+      .title { font-weight: 600; flex: 1; letter-spacing: -.01em; }
+      .sub { padding: 0 14px; color: var(--muted); font-size: 12px; }
+      .ctx { color: var(--fg); }
+      .row { display: flex; gap: 6px; padding: 12px 14px 14px; }
+      button { font: inherit; font-weight: 500; font-size: 12.5px; height: 32px; padding: 0 12px; border-radius: calc(var(--radius) - 2px);
+        cursor: pointer; border: 1px solid transparent; background: var(--primary); color: var(--primary-fg);
+        transition: opacity .15s, background .15s; }
+      button:hover { opacity: .9; }
+      button:focus-visible { outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 50%, transparent); }
       button:disabled { opacity: .5; cursor: default; }
-      button.ghost { background: transparent; color: #1b1d29; border-color: #dfe1ea; }
-      button.min { border: 0; background: transparent; color: inherit; padding: 2px 6px; font-size: 16px; }
-      .status { padding: 0 12px 10px; color: #6b7084; font-size: 12px; }
+      button.ghost { background: var(--bg); color: var(--fg); border-color: var(--border); }
+      button.ghost:hover { background: var(--secondary); opacity: 1; }
+      button.min { height: 24px; width: 24px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 16px; line-height: 1; }
+      button.min:hover { background: var(--secondary); color: var(--fg); opacity: 1; }
+      .all { flex: 1; }
+      .status { margin: 0 14px 12px; padding: 8px 10px; border-radius: calc(var(--radius) - 2px); background: var(--secondary); color: var(--muted); font-size: 12px; }
       .status:empty { display: none; }
       .bar.collapsed .sub, .bar.collapsed .row, .bar.collapsed .status { display: none; }
       .bar.collapsed { width: auto; }
+      .bar.collapsed header { padding-bottom: 12px; }
     </style>
     <div class="bar">
       <header><span class="logo">SQ</span><span class="title">SearchQuest</span><button class="min" title="Minimise">–</button></header>
