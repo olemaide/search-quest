@@ -1,0 +1,12 @@
+{
+  "name": "search-quest",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chrome extension: build Google search-operator queries, run search quests, save sites and extract emails.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "zip": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pack.ps1"
+  },
+  "license": "MIT"
+}
