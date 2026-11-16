@@ -1,23 +1,23 @@
 import * as React from 'react';
 import { toast } from 'sonner';
 import {
-  ChevronDownIcon, DownloadIcon, ExternalLinkIcon, GlobeIcon, MailIcon, PhoneIcon, PlusIcon, RefreshCwIcon,
-  ScanSearchIcon, SearchIcon, Trash2Icon, TriangleAlertIcon, XIcon,
+  ArrowUpDownIcon, CheckIcon, ChevronRightIcon, DownloadIcon, ExternalLinkIcon, GlobeIcon, ListFilterIcon, LockIcon,
+  LockOpenIcon, MailIcon, PhoneIcon, PlusIcon, RefreshCwIcon, ScanSearchIcon, SearchIcon, SmartphoneIcon, Trash2Icon,
+  TriangleAlertIcon, XIcon,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
-} from '@/components/ui/dialog';
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
-import { Field, FieldDescription, FieldGroup, FieldLabel, FieldSeparator } from '@/components/ui/field';
+import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '@/components/ui/input-group';
-import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from '@/components/ui/item';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -26,7 +26,7 @@ import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { PageHeader, ScoreBadge, safeHref, scanText } from '@/components/common';
+import { IconAction, InfoTip, PageHeader, ScoreBadge, safeHref, scanText } from '@/components/common';
 import { confirmDialog } from '@/components/confirm';
 import { bg, copyText, download, openSearch, store, today } from '@/lib/ext';
 import { useNav } from '@/lib/nav';
@@ -37,23 +37,19 @@ import { fmtDate, lines, timeAgo, toCsv, toUrl, uniq } from '@ext/util.js';
 import type { Quest, Site } from '@/types';
 
 const STATUS_LIST = STATUSES as [string, string][];
-const STATUS_TONE: Record<string, string> = {
-  new: '',
-  qualified: 'text-sky-700 dark:text-sky-300',
-  contacted: 'text-amber-700 dark:text-amber-300',
-  replied: 'text-violet-700 dark:text-violet-300',
-  won: 'text-emerald-700 dark:text-emerald-300',
-  rejected: 'text-muted-foreground line-through',
+const STATUS_LABEL = Object.fromEntries(STATUS_LIST);
+const STATUS_DOT: Record<string, string> = {
+  new: 'bg-zinc-400', qualified: 'bg-sky-500', contacted: 'bg-amber-500', replied: 'bg-violet-500', won: 'bg-emerald-500', rejected: 'bg-zinc-300 dark:bg-zinc-600',
 };
 
 const SORTS: [string, string][] = [
-  ['new', 'Newest first'], ['old', 'Oldest first'], ['score', 'Old-site score'],
-  ['year', 'Copyright year (oldest)'], ['domain', 'Domain A–Z'], ['status', 'Status'],
+  ['new', 'Newest'], ['old', 'Oldest'], ['score', 'Highest score'], ['year', 'Oldest ©'], ['domain', 'Domain A–Z'], ['status', 'Status'],
 ];
 
 interface Filters { text: string; status: string; questId: string; email: string; scan: string; minScore: string; sort: string }
 const ALL = 'all';
-let saved: Filters = { text: '', status: ALL, questId: ALL, email: ALL, scan: ALL, minScore: '0', sort: 'new' };
+const NO_FILTERS = { status: ALL, questId: ALL, email: ALL, scan: ALL, minScore: '0' };
+let saved: Filters = { text: '', ...NO_FILTERS, sort: 'new' };
 
 function applyFilters(sites: Site[], F: Filters) {
   const t = F.text.trim().toLowerCase();
@@ -98,13 +94,22 @@ export function sitesCsv(list: Site[], qmap: Map<string, Quest>) {
 
 const patchSites = (ids: string[], patch: Partial<Site>) => bg('sites:patch', { ids, patch });
 const scanSites = (ids: string[]) => bg<number>('sites:scan', { ids });
+const isBusy = (s: Site) => s.scanState === 'queued' || s.scanState === 'scanning';
 
-function StatusSelect({ site, className }: { site: Site; className?: string }) {
+function StatusSelect({ site, ghost = true, className }: { site: Site; ghost?: boolean; className?: string }) {
   return (
     <Select value={site.status} onValueChange={(v) => patchSites([site.id], { status: v })}>
-      <SelectTrigger size="sm" aria-label="Status" className={cn('w-[7.5rem]', STATUS_TONE[site.status], className)}><SelectValue /></SelectTrigger>
+      <SelectTrigger
+        size="sm"
+        aria-label="Status"
+        className={cn('w-[7.75rem] gap-2', ghost && 'border-transparent bg-transparent shadow-none hover:border-input dark:bg-transparent', className)}
+      >
+        <SelectValue />
+      </SelectTrigger>
       <SelectContent>
-        {STATUS_LIST.map(([v, l]) => <SelectItem key={v} value={v} className={STATUS_TONE[v]}>{l}</SelectItem>)}
+        {STATUS_LIST.map(([v, l]) => (
+          <SelectItem key={v} value={v}><span className={cn('size-2 rounded-full', STATUS_DOT[v])} />{l}</SelectItem>
+        ))}
       </SelectContent>
     </Select>
   );
@@ -113,18 +118,22 @@ function StatusSelect({ site, className }: { site: Site; className?: string }) {
 function EmailCell({ site }: { site: Site }) {
   if (site.emails?.length) {
     return (
-      <span className="flex min-w-0 items-center gap-1">
-        <button type="button" className="truncate text-left text-primary underline-offset-4 hover:underline" title={`Copy ${site.emails[0]}`} onClick={(e) => { e.stopPropagation(); copyText(site.emails[0]); }}>
-          {site.emails[0]}
-        </button>
-        {site.emails.length > 1 ? <Badge variant="secondary" className="h-5 px-1.5">+{site.emails.length - 1}</Badge> : null}
+      <span className="flex min-w-0 items-center gap-1.5">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button type="button" className="min-w-0 truncate text-left hover:underline" onClick={(e) => { e.stopPropagation(); copyText(site.emails[0]); }}>
+              {site.emails[0]}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Copy</TooltipContent>
+        </Tooltip>
+        {site.emails.length > 1 ? <span className="shrink-0 text-xs text-muted-foreground">+{site.emails.length - 1}</span> : null}
       </span>
     );
   }
-  const busy = site.scanState === 'queued' || site.scanState === 'scanning';
   return (
-    <span className={cn('flex items-center gap-1.5 text-xs text-muted-foreground', site.scanState === 'error' && 'text-destructive')} title={site.scanError || undefined}>
-      {busy ? <Spinner className="size-3" /> : null}
+    <span className={cn('flex items-center gap-1.5 text-xs text-muted-foreground/80', site.scanState === 'error' && 'text-destructive')} title={site.scanError || undefined}>
+      {isBusy(site) ? <Spinner className="size-3" /> : null}
       {scanText(site)}
     </span>
   );
@@ -152,9 +161,9 @@ export function SitesView() {
   const sel = new Set([...selected].filter((id) => ids.has(id)));
   const list = applyFilters(sites, F);
   const target = sel.size ? sites.filter((s) => sel.has(s.id)) : list;
-  const targetLabel = sel.size ? `${sel.size} selected` : `${list.length} shown`;
+  const scope = sel.size ? `${sel.size} selected` : `${list.length} shown`;
   const unscanned = sites.filter((s) => !s.scanState || s.scanState === 'none' || s.scanState === 'error');
-  const busy = sites.filter((s) => s.scanState === 'queued' || s.scanState === 'scanning').length;
+  const busy = sites.filter(isBusy).length;
   const allShown = list.length > 0 && list.every((s) => sel.has(s.id));
   const someShown = list.some((s) => sel.has(s.id));
   const toggle = (id: string, on: boolean) => setSelected((cur) => { const n = new Set(cur); if (on) n.add(id); else n.delete(id); return n; });
@@ -162,132 +171,129 @@ export function SitesView() {
 
   const copyEmails = () => {
     const emails = uniq(target.flatMap((s) => s.emails || [])) as string[];
-    if (!emails.length) return toast.info('No emails in these sites yet.');
+    if (!emails.length) return toast.info('No emails yet');
     copyText(emails.join('\n'), `Copied ${emails.length} emails`);
   };
-  const exportCsv = () => download(`searchquest-sites-${today()}.csv`, sitesCsv(target, qmap), 'text/csv;charset=utf-8');
-  const deleteSelected = async () => {
-    if (!(await confirmDialog({ title: `Delete ${sel.size} sites?`, description: 'This can’t be undone.', confirmLabel: 'Delete', destructive: true }))) return;
-    await bg('sites:delete', { ids: [...sel] });
-    setSelected(new Set());
-  };
-  const filtersActive = F.text || F.status !== ALL || F.questId !== ALL || F.email !== ALL || F.scan !== ALL || F.minScore !== '0';
+
+  const chips: { key: keyof Filters; label: string }[] = [];
+  if (F.status !== ALL) chips.push({ key: 'status', label: STATUS_LABEL[F.status] });
+  if (F.questId !== ALL) chips.push({ key: 'questId', label: F.questId === 'none' ? 'No quest' : qmap.get(F.questId)?.name || 'Quest' });
+  if (F.email !== ALL) chips.push({ key: 'email', label: F.email === 'yes' ? 'Has email' : 'No email' });
+  if (F.scan !== ALL) chips.push({ key: 'scan', label: F.scan === 'none' ? 'Not scanned' : 'Scan failed' });
+  if (F.minScore !== '0') chips.push({ key: 'minScore', label: `Score ≥ ${F.minScore}` });
 
   return (
     <>
       <PageHeader
         title="Sites"
-        description={`${sites.length} saved · ${sites.filter((s) => s.emails?.length).length} with email${busy ? ` · scanning ${busy}…` : ''}`}
+        count={sites.length}
+        info="Sites you saved from Google, the current tab, a right-click or pasted URLs. Each one is scanned for emails and old-site signals."
         actions={
           <>
-            {unscanned.length ? (
-              <Button variant="outline" size="sm" onClick={async () => { const n = await scanSites(unscanned.map((s) => s.id)); toast.success(`Scanning ${n} sites`); }}>
-                <ScanSearchIcon data-icon="inline-start" />Scan {unscanned.length} unscanned
-              </Button>
+            {busy ? (
+              <Tooltip>
+                <TooltipTrigger asChild><Badge variant="secondary" className="gap-1.5"><Spinner className="size-3" />{busy}</Badge></TooltipTrigger>
+                <TooltipContent>Scanning {busy} sites</TooltipContent>
+              </Tooltip>
             ) : null}
-            <Button size="sm" onClick={() => setAddOpen(true)}><PlusIcon data-icon="inline-start" />Add URLs</Button>
+            {unscanned.length ? (
+              <IconAction label={`Scan ${unscanned.length} unscanned`} icon={ScanSearchIcon} onClick={async () => { const n = await scanSites(unscanned.map((s) => s.id)); toast.success(`Scanning ${n} sites`); }} />
+            ) : null}
+            <Button size="sm" onClick={() => setAddOpen(true)}><PlusIcon data-icon="inline-start" />Add</Button>
           </>
         }
       />
 
+      {/* Toolbar */}
       <div className="flex flex-col gap-2">
-        <InputGroup>
-          <InputGroupAddon><SearchIcon /></InputGroupAddon>
-          <InputGroupInput placeholder="Search title, domain, email, notes…" value={F.text} onChange={(e) => set({ text: e.target.value })} />
-          {F.text ? <InputGroupAddon align="inline-end"><InputGroupButton size="icon-xs" aria-label="Clear search" onClick={() => set({ text: '' })}><XIcon /></InputGroupButton></InputGroupAddon> : null}
-        </InputGroup>
-        <div className="flex flex-wrap items-center gap-2">
-          <FilterSelect label="Status" value={F.status} onChange={(v) => set({ status: v })} options={[[ALL, 'Any status'], ...STATUS_LIST]} />
-          <FilterSelect label="Quest" value={F.questId} onChange={(v) => set({ questId: v })} options={[[ALL, 'All quests'], ['none', 'No quest'], ...quests.map((q) => [q.id, q.name] as [string, string])]} />
-          <FilterSelect label="Email" value={F.email} onChange={(v) => set({ email: v })} options={[[ALL, 'Email: any'], ['yes', 'Has email'], ['no', 'No email']]} />
-          <FilterSelect label="Scan" value={F.scan} onChange={(v) => set({ scan: v })} options={[[ALL, 'Scan: any'], ['none', 'Not scanned'], ['error', 'Scan failed']]} />
-          <FilterSelect label="Score" value={F.minScore} onChange={(v) => set({ minScore: v })} options={[['0', 'Any score'], ['30', 'Score ≥ 30'], ['50', 'Score ≥ 50'], ['70', 'Score ≥ 70']]} />
-          <FilterSelect label="Sort" value={F.sort} onChange={(v) => set({ sort: v })} options={SORTS} />
-          {filtersActive ? <Button variant="ghost" size="sm" onClick={() => set({ text: '', status: ALL, questId: ALL, email: ALL, scan: ALL, minScore: '0' })}>Reset</Button> : null}
+        <div className="flex items-center gap-1.5">
+          <InputGroup className="flex-1">
+            <InputGroupAddon><SearchIcon /></InputGroupAddon>
+            <InputGroupInput placeholder="Search" value={F.text} onChange={(e) => set({ text: e.target.value })} />
+            {F.text ? <InputGroupAddon align="inline-end"><InputGroupButton size="icon-xs" aria-label="Clear search" onClick={() => set({ text: '' })}><XIcon /></InputGroupButton></InputGroupAddon> : null}
+          </InputGroup>
+          <FilterPopover F={F} set={set} quests={quests} active={chips.length} />
+          <Select value={F.sort} onValueChange={(v) => set({ sort: v })}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <SelectTrigger aria-label="Sort" className="w-auto gap-1.5 [&>svg:last-child]:hidden">
+                  <ArrowUpDownIcon className="size-4 text-muted-foreground" />
+                  <span className="hidden @2xl/main:inline"><SelectValue /></span>
+                </SelectTrigger>
+              </TooltipTrigger>
+              <TooltipContent>Sort</TooltipContent>
+            </Tooltip>
+            <SelectContent align="end">{SORTS.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent>
+          </Select>
+          <IconAction label={`Copy emails (${scope})`} icon={MailIcon} variant="outline" size="icon" disabled={!target.length} onClick={copyEmails} />
+          <IconAction label={`Export CSV (${scope})`} icon={DownloadIcon} variant="outline" size="icon" disabled={!target.length} onClick={() => download(`searchquest-sites-${today()}.csv`, sitesCsv(target, qmap), 'text/csv;charset=utf-8')} />
         </div>
+        {chips.length ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {chips.map((c) => (
+              <Badge key={c.key} variant="secondary" className="h-6 gap-1 pr-1 font-normal">
+                {c.label}
+                <button type="button" aria-label={`Remove filter ${c.label}`} onClick={() => set({ [c.key]: c.key === 'minScore' ? '0' : ALL })} className="rounded-sm p-0.5 hover:bg-foreground/10"><XIcon className="size-3" /></button>
+              </Badge>
+            ))}
+            <Button variant="link" size="xs" className="h-auto px-1 text-muted-foreground" onClick={() => set(NO_FILTERS)}>Clear</Button>
+            <span className="ml-auto text-xs text-muted-foreground tabular-nums">{list.length} of {sites.length}</span>
+          </div>
+        ) : null}
       </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-sm text-muted-foreground">{list.length} of {sites.length} shown{sel.size ? ` · ${sel.size} selected` : ''}</span>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" disabled={!target.length} onClick={copyEmails}><MailIcon data-icon="inline-start" />Copy emails</Button>
-          <Button variant="outline" size="sm" disabled={!target.length} onClick={exportCsv}><DownloadIcon data-icon="inline-start" />Export CSV</Button>
-          {sel.size ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild><Button size="sm" variant="secondary">{sel.size} selected<ChevronDownIcon data-icon="inline-end" /></Button></DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onSelect={async () => { await scanSites([...sel]); toast.success('Scan queued'); }}><RefreshCwIcon />Scan again</DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuLabel>Set status</DropdownMenuLabel>
-                {STATUS_LIST.map(([v, l]) => (
-                  <DropdownMenuItem key={v} className={STATUS_TONE[v]} onSelect={async () => { await patchSites([...sel], { status: v }); toast.success(`Marked ${sel.size} as ${l}`); }}>{l}</DropdownMenuItem>
-                ))}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={() => setSelected(new Set())}><XIcon />Clear selection</DropdownMenuItem>
-                <DropdownMenuItem variant="destructive" onSelect={deleteSelected}><Trash2Icon />Delete</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : null}
-        </div>
-      </div>
-      <span className="sr-only" aria-live="polite">{`Actions apply to ${targetLabel}`}</span>
 
       {!sites.length ? (
-        <Empty className="border">
+        <Empty className="border border-dashed">
           <EmptyHeader>
             <EmptyMedia variant="icon"><GlobeIcon /></EmptyMedia>
-            <EmptyTitle>No saved sites yet</EmptyTitle>
-            <EmptyDescription>Run a search, then click “+ Save” next to a Google result or “Save all new” in the floating bar. You can also save the current tab, right-click a link, or paste URLs.</EmptyDescription>
+            <EmptyTitle>No sites yet</EmptyTitle>
+            <EmptyDescription>Click “+ Save” next to a Google result.</EmptyDescription>
           </EmptyHeader>
         </Empty>
       ) : !list.length ? (
-        <Empty className="border"><EmptyHeader><EmptyTitle>No sites match these filters</EmptyTitle></EmptyHeader></Empty>
+        <Empty className="border border-dashed"><EmptyHeader><EmptyTitle>Nothing matches</EmptyTitle></EmptyHeader></Empty>
       ) : (
         <>
           {/* Wide: table */}
-          <div className="hidden overflow-hidden rounded-lg border @3xl/main:block">
+          <div className="hidden overflow-hidden rounded-xl border @3xl/main:block">
             <Table className="table-fixed">
-              <TableHeader className="bg-muted/50">
-                <TableRow>
-                  <TableHead className="w-10">
-                    <Checkbox aria-label="Select all shown" checked={allShown ? true : someShown ? 'indeterminate' : false} onCheckedChange={(v) => toggleAll(!!v)} />
-                  </TableHead>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="w-10 pl-3"><Checkbox aria-label="Select all shown" checked={allShown ? true : someShown ? 'indeterminate' : false} onCheckedChange={(v) => toggleAll(!!v)} /></TableHead>
                   <TableHead>Site</TableHead>
-                  <TableHead className="w-[26%]">Email</TableHead>
-                  <TableHead className="w-16">Score</TableHead>
-                  <TableHead className="w-14">©</TableHead>
-                  <TableHead className="w-[14%]">Builder</TableHead>
+                  <TableHead className="w-[28%]">Email</TableHead>
+                  <TableHead className="w-16 text-center">Score</TableHead>
+                  <TableHead className="w-14 text-right">©</TableHead>
+                  <TableHead className="hidden w-[13%] @5xl/main:table-cell">Builder</TableHead>
                   <TableHead className="w-36">Status</TableHead>
-                  <TableHead className="w-10"><span className="sr-only">Scan</span></TableHead>
+                  <TableHead className="w-10" />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {list.slice(0, limit).map((s) => {
                   const quest = s.questId ? qmap.get(s.questId) : undefined;
-                  const scanning = s.scanState === 'queued' || s.scanState === 'scanning';
                   return (
-                    <TableRow key={s.id} data-state={sel.has(s.id) ? 'selected' : undefined} className="cursor-pointer" onClick={() => setOpenId(s.id)}>
-                      <TableCell onClick={(e) => e.stopPropagation()}>
+                    <TableRow key={s.id} data-state={sel.has(s.id) ? 'selected' : undefined} className="group/row h-12 cursor-pointer" onClick={() => setOpenId(s.id)}>
+                      <TableCell className="pl-3" onClick={(e) => e.stopPropagation()}>
                         <Checkbox aria-label={`Select ${s.domain}`} checked={sel.has(s.id)} onCheckedChange={(v) => toggle(s.id, !!v)} />
                       </TableCell>
                       <TableCell className="max-w-0">
                         <div className="truncate font-medium">{s.title || s.domain}</div>
-                        <div className="truncate text-xs text-muted-foreground">{s.domain}{quest ? ` · ${quest.name}` : ''}{s.location ? ` · ${s.location}` : ''}</div>
+                        <div className="truncate text-xs text-muted-foreground">{s.domain}{s.location ? ` · ${s.location}` : quest ? ` · ${quest.name}` : ''}</div>
                       </TableCell>
                       <TableCell className="max-w-0"><EmailCell site={s} /></TableCell>
-                      <TableCell><ScoreBadge score={s.scan?.score} /></TableCell>
-                      <TableCell className="tabular-nums">{s.scan?.copyrightYear ?? '–'}</TableCell>
-                      <TableCell className="max-w-0 truncate text-xs text-muted-foreground" title={s.scan?.builders?.join(', ')}>{s.scan?.builder || ''}</TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()}><StatusSelect site={s} /></TableCell>
+                      <TableCell className="text-center"><ScoreBadge score={s.scan?.score} /></TableCell>
+                      <TableCell className="text-right tabular-nums text-muted-foreground">{s.scan?.copyrightYear ?? '–'}</TableCell>
+                      <TableCell className="hidden max-w-0 truncate text-xs text-muted-foreground @5xl/main:table-cell" title={s.scan?.builders?.join(', ')}>{s.scan?.builder || ''}</TableCell>
+                      <TableCell onClick={(e) => e.stopPropagation()}><StatusSelect site={s} className="-ml-2.5" /></TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button variant="ghost" size="icon-xs" aria-label="Scan again" onClick={() => scanSites([s.id])}>
-                              <RefreshCwIcon className={cn(scanning && 'animate-spin')} />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>Scan again</TooltipContent>
-                        </Tooltip>
+                        <IconAction
+                          label="Scan again"
+                          icon={RefreshCwIcon}
+                          size="icon-xs"
+                          className={cn(isBusy(s) ? '[&_svg]:animate-spin' : 'opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100')}
+                          onClick={() => scanSites([s.id])}
+                        />
                       </TableCell>
                     </TableRow>
                   );
@@ -296,35 +302,62 @@ export function SitesView() {
             </Table>
           </div>
 
-          {/* Narrow (side panel): items */}
-          <ItemGroup className="gap-2 @3xl/main:hidden">
+          {/* Narrow (side panel): rows */}
+          <ul className="flex flex-col divide-y overflow-hidden rounded-xl border @3xl/main:hidden">
             {list.slice(0, limit).map((s) => (
-              <Item key={s.id} variant="outline" size="sm" className={cn('items-start', sel.has(s.id) && 'bg-muted/60')}>
-                <Checkbox className="mt-0.5" aria-label={`Select ${s.domain}`} checked={sel.has(s.id)} onCheckedChange={(v) => toggle(s.id, !!v)} />
-                <ItemContent className="min-w-0 gap-1.5">
-                  <button type="button" className="min-w-0 text-left" onClick={() => setOpenId(s.id)}>
-                    <ItemTitle className="w-full truncate">{s.title || s.domain}</ItemTitle>
-                    <ItemDescription className="truncate text-xs">{s.domain}{s.location ? ` · ${s.location}` : ''}</ItemDescription>
+              <li key={s.id} className={cn('flex items-start gap-3 px-3 py-2.5', sel.has(s.id) && 'bg-muted/60')}>
+                <Checkbox className="mt-1" aria-label={`Select ${s.domain}`} checked={sel.has(s.id)} onCheckedChange={(v) => toggle(s.id, !!v)} />
+                <div className="flex min-w-0 flex-1 flex-col gap-1">
+                  <button type="button" className="flex min-w-0 items-center gap-2 text-left" onClick={() => setOpenId(s.id)}>
+                    <span className="min-w-0 flex-1 truncate font-medium">{s.title || s.domain}</span>
+                    <ScoreBadge score={s.scan?.score} />
                   </button>
-                  <EmailCell site={s} />
-                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                    {s.scan?.copyrightYear ? <Badge variant="outline">© {s.scan.copyrightYear}</Badge> : null}
-                    {s.scan?.builder ? <Badge variant="outline" className="max-w-40 truncate">{s.scan.builder}</Badge> : null}
+                  <span className="truncate text-xs text-muted-foreground">{s.domain}{s.scan?.copyrightYear ? ` · © ${s.scan.copyrightYear}` : ''}</span>
+                  <div className="flex min-w-0 items-center gap-2 text-sm">
+                    <div className="min-w-0 flex-1"><EmailCell site={s} /></div>
+                    <StatusSelect site={s} className="-mr-2 w-auto" />
                   </div>
-                </ItemContent>
-                <ItemActions className="flex-col items-end gap-2">
-                  <ScoreBadge score={s.scan?.score} />
-                  <StatusSelect site={s} className="w-[6.75rem]" />
-                </ItemActions>
-              </Item>
+                </div>
+              </li>
             ))}
-          </ItemGroup>
+          </ul>
 
-          {list.length > limit ? (
-            <Button variant="outline" className="self-center" onClick={() => setLimit((l) => l + 300)}>Show more ({list.length - limit} hidden)</Button>
-          ) : null}
+          {list.length > limit ? <Button variant="ghost" className="self-center" onClick={() => setLimit((l) => l + 300)}>Show {list.length - limit} more</Button> : null}
         </>
       )}
+
+      {/* Bulk actions appear only when something is selected */}
+      {sel.size ? (
+        <div className="fixed inset-x-0 bottom-4 z-40 flex justify-center px-3">
+          <div role="toolbar" aria-label="Bulk actions" className="flex items-center gap-1 rounded-xl border bg-popover p-1.5 pl-3 text-popover-foreground shadow-lg animate-in fade-in-0 slide-in-from-bottom-2">
+            <span className="mr-1 text-sm font-medium tabular-nums">{sel.size} selected</span>
+            <Separator orientation="vertical" className="mx-1 h-5" />
+            <IconAction label="Scan again" icon={RefreshCwIcon} onClick={async () => { await scanSites([...sel]); toast.success('Scan queued'); }} />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild><Button size="sm" variant="ghost">Status</Button></DropdownMenuTrigger>
+              <DropdownMenuContent align="center" side="top">
+                <DropdownMenuLabel>Set status</DropdownMenuLabel>
+                {STATUS_LIST.map(([v, l]) => (
+                  <DropdownMenuItem key={v} onSelect={async () => { await patchSites([...sel], { status: v }); toast.success(`${sel.size} → ${l}`); }}>
+                    <span className={cn('size-2 rounded-full', STATUS_DOT[v])} />{l}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <IconAction
+              label="Delete"
+              icon={Trash2Icon}
+              className="text-destructive hover:text-destructive"
+              onClick={async () => {
+                if (!(await confirmDialog({ title: `Delete ${sel.size} sites?`, confirmLabel: 'Delete', destructive: true }))) return;
+                await bg('sites:delete', { ids: [...sel] });
+                setSelected(new Set());
+              }}
+            />
+            <IconAction label="Clear selection" icon={XIcon} onClick={() => setSelected(new Set())} />
+          </div>
+        </div>
+      ) : null}
 
       <SiteSheet id={openId} qmap={qmap} onOpenChange={(o) => !o && setOpenId(null)} />
       <AddUrlsDialog open={addOpen} onOpenChange={setAddOpen} quests={quests} />
@@ -332,35 +365,43 @@ export function SitesView() {
   );
 }
 
-function FilterSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: [string, string][] }) {
+function FilterPopover({ F, set, quests, active }: { F: Filters; set: (p: Partial<Filters>) => void; quests: Quest[]; active: number }) {
+  const row = (label: string, key: keyof Filters, options: [string, string][]) => (
+    <Field orientation="horizontal" className="justify-between">
+      <FieldLabel className="font-normal text-muted-foreground">{label}</FieldLabel>
+      <Select value={F[key]} onValueChange={(v) => set({ [key]: v })}>
+        <SelectTrigger size="sm" className="w-40"><SelectValue /></SelectTrigger>
+        <SelectContent>{options.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent>
+      </Select>
+    </Field>
+  );
   return (
-    <Select value={value} onValueChange={onChange}>
-      <SelectTrigger size="sm" aria-label={label} className="w-auto max-w-56"><SelectValue /></SelectTrigger>
-      <SelectContent>{options.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent>
-    </Select>
+    <Popover>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size={active ? 'default' : 'icon'} aria-label="Filters">
+              <ListFilterIcon />
+              {active ? <span className="rounded-full bg-primary px-1.5 text-xs text-primary-foreground tabular-nums">{active}</span> : null}
+            </Button>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent>Filters</TooltipContent>
+      </Tooltip>
+      <PopoverContent align="end" className="w-80">
+        <FieldGroup className="gap-3">
+          {row('Status', 'status', [[ALL, 'Any'], ...STATUS_LIST])}
+          {row('Quest', 'questId', [[ALL, 'Any'], ['none', 'No quest'], ...quests.map((q) => [q.id, q.name] as [string, string])])}
+          {row('Email', 'email', [[ALL, 'Any'], ['yes', 'Has email'], ['no', 'No email']])}
+          {row('Scan', 'scan', [[ALL, 'Any'], ['none', 'Not scanned'], ['error', 'Failed']])}
+          {row('Score', 'minScore', [['0', 'Any'], ['30', '≥ 30'], ['50', '≥ 50'], ['70', '≥ 70']])}
+        </FieldGroup>
+      </PopoverContent>
+    </Popover>
   );
 }
 
 // ----------------------------------------------------------------- detail sheet
-
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
-  if (children == null || children === '') return null;
-  return (
-    <div className="grid grid-cols-[8rem_minmax(0,1fr)] gap-3 py-1 text-sm">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="break-words">{children}</span>
-    </div>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="flex flex-col gap-2">
-      <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{title}</h3>
-      {children}
-    </section>
-  );
-}
 
 function SiteSheet({ id, qmap, onOpenChange }: { id: string | null; qmap: Map<string, Quest>; onOpenChange: (o: boolean) => void }) {
   const [site] = useExtData(
@@ -371,163 +412,211 @@ function SiteSheet({ id, qmap, onOpenChange }: { id: string | null; qmap: Map<st
   const s = site && site.id === id ? site : null;
   return (
     <Sheet open={!!id} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full gap-0 sm:max-w-xl">
-        {s ? <SiteDetail key={s.id} s={s} qmap={qmap} onClose={() => onOpenChange(false)} /> : <SheetHeader><SheetTitle>Loading…</SheetTitle></SheetHeader>}
+      <SheetContent className="w-full gap-0 sm:max-w-lg">
+        {s ? <SiteDetail key={s.id} s={s} qmap={qmap} onClose={() => onOpenChange(false)} /> : <SheetHeader><SheetTitle className="sr-only">Site</SheetTitle><Spinner /></SheetHeader>}
       </SheetContent>
     </Sheet>
+  );
+}
+
+function Fact({ icon: Icon, label, value, warn, hint }: { icon?: React.ElementType; label: string; value: React.ReactNode; warn?: boolean; hint: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div className={cn('flex flex-col items-center gap-1 rounded-lg border px-2 py-2.5 text-center', warn && 'border-amber-500/30 bg-amber-500/5')}>
+          <span className={cn('flex h-5 items-center gap-1 text-sm font-semibold tabular-nums', warn && 'text-amber-700 dark:text-amber-300')}>
+            {Icon ? <Icon className="size-4" /> : null}{value}
+          </span>
+          <span className="text-[11px] text-muted-foreground">{label}</span>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent>{hint}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function Section({ title, children, action }: { title: string; children: React.ReactNode; action?: React.ReactNode }) {
+  return (
+    <section className="flex flex-col gap-2">
+      <div className="flex h-6 items-center gap-2">
+        <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{title}</h3>
+        {action ? <div className="ml-auto">{action}</div> : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  if (children == null || children === '') return null;
+  return (
+    <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 py-1 text-sm">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="break-words">{children}</span>
+    </div>
+  );
+}
+
+function Fold({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <Collapsible className="flex flex-col gap-1">
+      <CollapsibleTrigger className="group -ml-1 flex h-7 items-center gap-1.5 self-start rounded-md px-1 text-xs font-medium tracking-wide text-muted-foreground uppercase outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50">
+        <ChevronRightIcon className="size-3.5 transition-transform group-data-[state=open]:rotate-90" />{title}
+      </CollapsibleTrigger>
+      <CollapsibleContent>{children}</CollapsibleContent>
+    </Collapsible>
   );
 }
 
 function SiteDetail({ s, qmap, onClose }: { s: Site; qmap: Map<string, Quest>; onClose: () => void }) {
   const [notes, setNotes] = React.useState(s.notes || '');
   const [tags, setTags] = React.useState((s.tags || []).join(', '));
+  const [adding, setAdding] = React.useState(false);
   const [newEmail, setNewEmail] = React.useState('');
   const patch = (p: Partial<Site>) => patchSites([s.id], p);
   const sc = s.scan;
   const quest = s.questId ? qmap.get(s.questId) : undefined;
-  const scanning = s.scanState === 'queued' || s.scanState === 'scanning';
+  const busy = isBusy(s);
 
   const addEmail = () => {
     const e = newEmail.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return toast.error('That doesn’t look like an email address.');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return toast.error('Not a valid email');
     patch({ emails: uniq([...(s.emails || []), e]) as string[] });
     setNewEmail('');
+    setAdding(false);
   };
 
   return (
     <>
-      <SheetHeader className="border-b pr-12">
-        <SheetTitle className="truncate">{s.title || s.domain}</SheetTitle>
-        <SheetDescription asChild>
-          <a href={safeHref(s.url)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 truncate text-primary hover:underline">
-            {s.url}<ExternalLinkIcon className="size-3 shrink-0" />
-          </a>
-        </SheetDescription>
-        <div className="flex flex-wrap items-center gap-2 pt-2">
-          <StatusSelect site={s} />
-          <Button size="sm" variant="outline" disabled={scanning} onClick={() => scanSites([s.id])}>
-            {scanning ? <Spinner data-icon="inline-start" /> : <RefreshCwIcon data-icon="inline-start" />}
-            {scanning ? 'Scanning…' : sc ? 'Rescan' : 'Scan'}
-          </Button>
-          <Button
-            size="sm" variant="ghost" className="ml-auto text-destructive hover:text-destructive"
+      <SheetHeader className="gap-3 border-b pr-12">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <SheetTitle className="truncate text-base">{s.title || s.domain}</SheetTitle>
+          <SheetDescription asChild>
+            <a href={safeHref(s.url)} target="_blank" rel="noopener noreferrer" className="flex w-fit max-w-full items-center gap-1 truncate hover:text-foreground hover:underline">
+              <span className="truncate">{s.domain}</span><ExternalLinkIcon className="size-3 shrink-0" />
+            </a>
+          </SheetDescription>
+        </div>
+        <div className="flex items-center gap-1">
+          <StatusSelect site={s} ghost={false} />
+          <IconAction label={sc ? 'Rescan' : 'Scan'} icon={busy ? Spinner : RefreshCwIcon} disabled={busy} onClick={() => scanSites([s.id])} />
+          <IconAction
+            label="Delete site"
+            icon={Trash2Icon}
+            className="ml-auto text-muted-foreground hover:text-destructive"
             onClick={async () => {
               if (!(await confirmDialog({ title: 'Delete this site?', description: s.domain, confirmLabel: 'Delete', destructive: true }))) return;
               await bg('sites:delete', { ids: [s.id] });
               onClose();
             }}
-          >
-            <Trash2Icon data-icon="inline-start" />Delete
-          </Button>
+          />
         </div>
       </SheetHeader>
 
       <div className="flex flex-1 flex-col gap-6 overflow-y-auto p-4">
         {s.scanState === 'error' ? (
-          <p className="flex items-start gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-            <TriangleAlertIcon className="mt-0.5 size-4 shrink-0" />
-            Last scan failed: {s.scanError || 'unknown error'}. The site may be down, slow, or blocking bots.
+          <p className="flex items-start gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+            <TriangleAlertIcon className="mt-0.5 size-4 shrink-0" />{s.scanError || 'Scan failed'}
           </p>
         ) : null}
 
-        <Section title="Contact">
+        {sc ? (
+          <div className="grid grid-cols-4 gap-2">
+            <Fact label="Score" value={<ScoreBadge score={sc.score} className="h-5 text-sm" />} hint="Old-site score · higher = older site" />
+            <Fact label="©" value={sc.copyrightYear ?? '–'} warn={!!sc.copyrightYear && new Date().getFullYear() - sc.copyrightYear >= 6} hint="Most recent copyright year on the site" />
+            <Fact label="HTTPS" icon={sc.https ? LockIcon : LockOpenIcon} value={null} warn={!sc.https} hint={sc.https ? 'Served over HTTPS' : 'No HTTPS'} />
+            <Fact label="Mobile" icon={SmartphoneIcon} value={sc.mobile ? <CheckIcon className="size-3.5" /> : <XIcon className="size-3.5" />} warn={!sc.mobile} hint={sc.mobile ? 'Has a mobile viewport' : 'No mobile viewport'} />
+          </div>
+        ) : null}
+
+        <Section
+          title="Contact"
+          action={<IconAction label="Add email" icon={PlusIcon} size="icon-xs" onClick={() => setAdding((a) => !a)} />}
+        >
           {s.emails?.length ? (
-            <ItemGroup className="gap-1">
+            <ul className="flex flex-col">
               {s.emails.map((e) => (
-                <Item key={e} size="xs" variant="muted" className="py-1.5">
-                  <MailIcon className="size-4 text-muted-foreground" />
-                  <ItemContent className="min-w-0"><ItemTitle className="w-full truncate font-normal">{e}</ItemTitle></ItemContent>
-                  <ItemActions className="gap-0.5">
+                <li key={e} className="group flex h-9 items-center gap-2 rounded-md px-2 hover:bg-muted/60">
+                  <MailIcon className="size-4 shrink-0 text-muted-foreground" />
+                  <a href={'mailto:' + e} className="min-w-0 flex-1 truncate text-sm hover:underline">{e}</a>
+                  <div className="flex opacity-0 group-hover:opacity-100 focus-within:opacity-100">
                     <Button size="xs" variant="ghost" onClick={() => copyText(e)}>Copy</Button>
-                    <Button size="xs" variant="ghost" asChild><a href={'mailto:' + e}>Mail</a></Button>
-                    <Button size="icon-xs" variant="ghost" aria-label={`Remove ${e}`} onClick={() => patch({ emails: s.emails.filter((x) => x !== e) })}><XIcon /></Button>
-                  </ItemActions>
-                </Item>
+                    <IconAction label="Remove" icon={XIcon} size="icon-xs" onClick={() => patch({ emails: s.emails.filter((x) => x !== e) })} />
+                  </div>
+                </li>
               ))}
-            </ItemGroup>
+            </ul>
           ) : (
-            <p className="text-sm text-muted-foreground">{s.scanState === 'done' ? 'No email found on the scanned pages. Try the contact form or call.' : scanText(s)}</p>
+            <p className="flex items-center gap-2 text-sm text-muted-foreground">{busy ? <Spinner className="size-3.5" /> : null}{s.scanState === 'done' ? 'No email found' : scanText(s)}</p>
           )}
-          <InputGroup>
-            <InputGroupInput type="email" placeholder="Add an email manually" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addEmail()} />
-            <InputGroupAddon align="inline-end"><InputGroupButton onClick={addEmail}>Add</InputGroupButton></InputGroupAddon>
-          </InputGroup>
+          {adding ? (
+            <InputGroup>
+              <InputGroupInput autoFocus type="email" placeholder="name@domain.com" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addEmail(); if (e.key === 'Escape') setAdding(false); }} />
+              <InputGroupAddon align="inline-end"><InputGroupButton onClick={addEmail}>Add</InputGroupButton></InputGroupAddon>
+            </InputGroup>
+          ) : null}
           {s.phones?.length || (sc?.socials && Object.keys(sc.socials).length) ? (
             <div className="flex flex-wrap gap-1.5">
-              {(s.phones || []).map((p) => (
-                <Badge key={p} variant="outline" asChild><a href={'tel:' + p.replace(/[^\d+]/g, '')}><PhoneIcon />{p}</a></Badge>
-              ))}
+              {(s.phones || []).map((p) => <Badge key={p} variant="outline" asChild><a href={'tel:' + p.replace(/[^\d+]/g, '')}><PhoneIcon />{p}</a></Badge>)}
               {Object.entries(sc?.socials || {}).map(([k, u]) => (
-                <Badge key={k} variant="secondary" asChild><a href={safeHref(u)} target="_blank" rel="noopener noreferrer" className="capitalize">{k}</a></Badge>
+                <Badge key={k} variant="outline" asChild><a href={safeHref(u)} target="_blank" rel="noopener noreferrer" className="capitalize">{k}<ExternalLinkIcon /></a></Badge>
               ))}
             </div>
           ) : null}
         </Section>
 
-        <Separator />
-
-        <Section title="Old-site signals">
-          {sc ? (
-            <>
-              <div className="flex items-center gap-2 text-sm"><ScoreBadge score={sc.score} /><span className="text-muted-foreground">Old-site score (0–100)</span></div>
-              <div>
-                <Row label="Copyright year">{sc.copyrightYear}</Row>
-                <Row label="Last updated">{sc.lastUpdated}</Row>
-                <Row label="Builder / CMS">{sc.builders?.join(', ')}</Row>
-                <Row label="Generator tag">{sc.generator}</Row>
-                <Row label="Outdated CMS">{sc.oldCms}</Row>
-                <Row label="HTTPS">{sc.https ? 'Yes' : <span className="text-amber-700 dark:text-amber-300">No</span>}</Row>
-                <Row label="Mobile viewport">{sc.mobile ? 'Yes' : <span className="text-amber-700 dark:text-amber-300">No</span>}</Row>
-              </div>
-              {sc.signals?.length ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {sc.signals.map((x) => <Badge key={x} variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200">{x}</Badge>)}
-                </div>
-              ) : null}
-            </>
-          ) : <p className="text-sm text-muted-foreground">{scanText(s)}</p>}
-        </Section>
-
-        <Separator />
+        {sc?.signals?.length ? (
+          <Section title="Old-site signals">
+            <div className="flex flex-wrap gap-1.5">
+              {sc.signals.map((x) => <Badge key={x} variant="outline" className="border-amber-500/30 bg-amber-500/10 font-normal text-amber-800 dark:text-amber-200">{x}</Badge>)}
+            </div>
+          </Section>
+        ) : null}
 
         <Section title="Notes">
-          <Textarea rows={3} value={notes} placeholder="What to pitch, who you talked to…" onChange={(e) => setNotes(e.target.value)} onBlur={() => notes !== (s.notes || '') && patch({ notes })} />
-          <Field className="gap-1.5">
-            <FieldLabel htmlFor="tags">Tags</FieldLabel>
-            <Input id="tags" value={tags} placeholder="comma separated" onChange={(e) => setTags(e.target.value)}
-              onBlur={() => patch({ tags: uniq(tags.split(',').map((t) => t.trim()).filter(Boolean)) as string[] })} />
-          </Field>
+          <Textarea rows={3} value={notes} placeholder="What to pitch…" onChange={(e) => setNotes(e.target.value)} onBlur={() => notes !== (s.notes || '') && patch({ notes })} />
+          <Input aria-label="Tags" value={tags} placeholder="Tags, comma separated" onChange={(e) => setTags(e.target.value)} onBlur={() => patch({ tags: uniq(tags.split(',').map((t) => t.trim()).filter(Boolean)) as string[] })} />
         </Section>
 
         <Separator />
 
-        <Section title="Source">
-          <div>
-            <Row label="Quest">{quest ? quest.name + (s.location ? ' · ' + s.location : '') : s.location}</Row>
-            {s.query ? (
-              <Row label="Query">
-                <code className="font-mono text-xs">{s.query}</code>{' '}
-                <span className="inline-flex gap-1">
-                  <Button variant="link" size="xs" className="h-auto p-0" onClick={() => copyText(s.query)}>copy</Button>
-                  <Button variant="link" size="xs" className="h-auto p-0" onClick={() => openSearch(s.query, s.questId ? { questId: s.questId, location: s.location } : {})}>re-run</Button>
-                </span>
+        {sc ? (
+          <Fold title="Technical">
+            <Row label="Builder / CMS">{sc.builders?.join(', ')}</Row>
+            <Row label="Generator">{sc.generator}</Row>
+            <Row label="Outdated CMS">{sc.oldCms}</Row>
+            <Row label="Last updated">{sc.lastUpdated}</Row>
+            {sc.pages?.length ? (
+              <Row label="Pages scanned">
+                <ul className="flex flex-col gap-0.5 text-xs">
+                  {sc.pages.map((p) => (
+                    <li key={p.url} className="truncate">
+                      <a href={safeHref(p.url)} target="_blank" rel="noopener noreferrer" className="hover:underline">{p.url.replace(/^https?:\/\/(www\.)?/, '')}</a>
+                      <span className="text-muted-foreground"> · {p.emails}✉</span>
+                    </li>
+                  ))}
+                </ul>
               </Row>
             ) : null}
-            <Row label="Google snippet">{s.snippet}</Row>
-            <Row label="Description">{sc?.description}</Row>
-            <Row label="Saved">{fmtDate(s.createdAt)}</Row>
-            <Row label="Scanned">{s.scannedAt ? `${fmtDate(s.scannedAt)} (${timeAgo(s.scannedAt)})` : null}</Row>
-          </div>
-          {sc?.pages?.length ? (
-            <ul className="flex flex-col gap-1 text-xs text-muted-foreground">
-              {sc.pages.map((p) => (
-                <li key={p.url} className="truncate">
-                  <a href={safeHref(p.url)} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{p.url}</a> · {p.status} · {p.emails} email{p.emails === 1 ? '' : 's'}
-                </li>
-              ))}
-            </ul>
+          </Fold>
+        ) : null}
+
+        <Fold title="Source">
+          <Row label="Quest">{quest ? quest.name + (s.location ? ' · ' + s.location : '') : s.location}</Row>
+          {s.query ? (
+            <Row label="Query">
+              <code className="font-mono text-xs">{s.query}</code>
+              <span className="mt-1 flex gap-3">
+                <Button variant="link" size="xs" className="h-auto p-0" onClick={() => copyText(s.query)}>Copy</Button>
+                <Button variant="link" size="xs" className="h-auto p-0" onClick={() => openSearch(s.query, s.questId ? { questId: s.questId, location: s.location } : {})}>Re-run</Button>
+              </span>
+            </Row>
           ) : null}
-        </Section>
+          <Row label="Snippet">{s.snippet}</Row>
+          <Row label="Description">{sc?.description}</Row>
+          <Row label="Saved">{fmtDate(s.createdAt)}</Row>
+          <Row label="Scanned">{s.scannedAt ? timeAgo(s.scannedAt) : null}</Row>
+        </Fold>
       </div>
     </>
   );
@@ -539,49 +628,48 @@ function AddUrlsDialog({ open, onOpenChange, quests }: { open: boolean; onOpenCh
   const [text, setText] = React.useState('');
   const [questId, setQuestId] = React.useState('none');
   const [scan, setScan] = React.useState(true);
-  const valid = (lines(text).map(toUrl).filter(Boolean) as string[]);
+  const valid = lines(text).map(toUrl).filter(Boolean) as string[];
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!valid.length) return toast.error('No valid URLs found.');
+    if (!valid.length) return;
     const r = await bg<{ added: string[]; dupes: string[] }>('sites:add', { items: valid.map((url) => ({ url })), questId: questId === 'none' ? null : questId, scan });
-    toast.success(`Added ${r.added.length} site${r.added.length === 1 ? '' : 's'}`, { description: r.dupes.length ? `${r.dupes.length} were already saved` : undefined });
+    toast.success(`Added ${r.added.length}`, { description: r.dupes.length ? `${r.dupes.length} already saved` : undefined });
     setText('');
     onOpenChange(false);
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-md">
         <form onSubmit={submit} className="flex flex-col gap-5">
-          <DialogHeader>
-            <DialogTitle>Add sites</DialogTitle>
-            <DialogDescription>Paste URLs or bare domains, one per line.</DialogDescription>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>Add sites</DialogTitle></DialogHeader>
           <FieldGroup className="gap-4">
-            <Field>
-              <FieldLabel htmlFor="urls">URLs</FieldLabel>
-              <Textarea id="urls" rows={7} value={text} onChange={(e) => setText(e.target.value)} placeholder={'mueller-dach.de\nhttps://www.smith-funeral-home.com'} className="font-mono text-xs" />
-              <FieldDescription>{valid.length} valid URL{valid.length === 1 ? '' : 's'}</FieldDescription>
+            <Field className="gap-1.5">
+              <div className="flex items-center gap-2">
+                <FieldLabel htmlFor="urls">URLs</FieldLabel>
+                <InfoTip>One per line. Bare domains work too.</InfoTip>
+                <span className="ml-auto text-xs text-muted-foreground tabular-nums">{valid.length} valid</span>
+              </div>
+              <Textarea id="urls" rows={6} value={text} onChange={(e) => setText(e.target.value)} placeholder={'mueller-dach.de\nsmith-funeral-home.com'} className="font-mono text-xs" />
             </Field>
-            <Field>
-              <FieldLabel>Add to quest</FieldLabel>
+            <Field orientation="horizontal" className="justify-between">
+              <FieldLabel className="font-normal">Quest</FieldLabel>
               <Select value={questId} onValueChange={setQuestId}>
-                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectTrigger size="sm" className="w-48"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">No quest</SelectItem>
+                  <SelectItem value="none">None</SelectItem>
                   {quests.map((q) => <SelectItem key={q.id} value={q.id}>{q.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </Field>
-            <FieldSeparator />
-            <Field orientation="horizontal">
+            <Field orientation="horizontal" className="justify-between">
+              <FieldLabel htmlFor="scan-now" className="font-normal">Scan for emails now</FieldLabel>
               <Switch id="scan-now" checked={scan} onCheckedChange={setScan} />
-              <FieldLabel htmlFor="scan-now" className="font-normal">Scan them for emails right away</FieldLabel>
             </Field>
           </FieldGroup>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
             <Button type="submit" disabled={!valid.length}>Add {valid.length || ''}</Button>
           </DialogFooter>
         </form>

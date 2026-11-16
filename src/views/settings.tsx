@@ -1,21 +1,43 @@
 import * as React from 'react';
 import { toast } from 'sonner';
-import { DownloadIcon, FileJsonIcon, RotateCcwIcon, Trash2Icon, UploadIcon } from 'lucide-react';
+import { ChevronRightIcon, DownloadIcon, FileJsonIcon, RotateCcwIcon, Trash2Icon, UploadIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldSeparator, FieldTitle,
-} from '@/components/ui/field';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
-import { PageHeader } from '@/components/common';
+import { InfoTip, PageHeader } from '@/components/common';
 import { confirmDialog } from '@/components/confirm';
 import { bg, download, getSettings, store, today } from '@/lib/ext';
 import { useExtData } from '@/hooks/use-ext-data';
 import { sitesCsv } from '@/views/sites';
 import { GOOGLE_DOMAINS } from '@ext/defaults.js';
 import type { Quest, Settings, Site } from '@/types';
+
+/** One settings row: label + optional ⓘ on the left, control right-aligned. */
+function SettingRow({ label, info, htmlFor, children }: { label: string; info?: string; htmlFor?: string; children: React.ReactNode }) {
+  return (
+    <div className="flex min-h-12 items-center gap-3 py-1.5">
+      <label htmlFor={htmlFor} className="text-sm font-medium">{label}</label>
+      {info ? <InfoTip>{info}</InfoTip> : null}
+      <div className="ml-auto flex shrink-0 items-center gap-2">{children}</div>
+    </div>
+  );
+}
+
+function Group({ title, children }: { title: string; children: React.ReactNode }) {
+  const rows = React.Children.toArray(children).filter(Boolean);
+  return (
+    <Card className="gap-1 py-3">
+      <CardHeader className="px-4"><CardTitle className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{title}</CardTitle></CardHeader>
+      <CardContent className="px-4">
+        {rows.map((r, i) => <React.Fragment key={i}>{i > 0 ? <Separator /> : null}{r}</React.Fragment>)}
+      </CardContent>
+    </Card>
+  );
+}
 
 export function SettingsView() {
   const [s] = useExtData(getSettings, (k) => k === 'settings');
@@ -24,24 +46,24 @@ export function SettingsView() {
 
   const set = async (patch: Partial<Settings>) => {
     await store.setSettings(patch);
-    toast.success('Saved', { duration: 1200 });
+    toast.success('Saved', { duration: 1000 });
   };
-  const num = (k: keyof Settings, min: number, max: number) => (
+  const num = (k: keyof Settings, min: number, max: number, id: string) => (
     <Input
-      type="number" min={min} max={max} defaultValue={s[k] as number} className="w-24"
+      id={id} type="number" min={min} max={max} defaultValue={s[k] as number} className="h-8 w-20 text-right tabular-nums"
       onBlur={(e) => { const v = Math.max(min, Math.min(max, +e.target.value || 0)); e.target.value = String(v); if (v !== s[k]) set({ [k]: v }); }}
     />
   );
   const text = (k: 'hl' | 'gl', placeholder: string) => (
-    <Input defaultValue={s[k]} placeholder={placeholder} className="w-24" onBlur={(e) => { const v = e.target.value.trim(); if (v !== s[k]) set({ [k]: v }); }} />
+    <Input aria-label={k} defaultValue={s[k]} placeholder={placeholder} className="h-8 w-16 text-center" onBlur={(e) => { const v = e.target.value.trim(); if (v !== s[k]) set({ [k]: v }); }} />
   );
 
   const importFile = async (file: File) => {
     try {
       const data = JSON.parse(await file.text());
       const n = Object.keys(data?.data || {}).length;
-      if (!(await confirmDialog({ title: 'Import this backup?', description: `Merge ${n} records from “${file.name}”. Records with the same id are overwritten.`, confirmLabel: 'Import' }))) return;
-      toast.success(`Imported ${await store.importAll(data)} records`);
+      if (!(await confirmDialog({ title: `Import ${n} records?`, description: 'Records with the same id are overwritten.', confirmLabel: 'Import' }))) return;
+      toast.success(`Imported ${await store.importAll(data)}`);
     } catch (err) {
       toast.error('Import failed', { description: String((err as Error).message) });
     }
@@ -51,117 +73,71 @@ export function SettingsView() {
     <>
       <PageHeader title="Settings" />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Google searches</CardTitle>
-          <CardDescription>How searches open, and how SearchQuest keeps you clear of CAPTCHAs.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <FieldGroup>
-            <Field orientation="responsive">
-              <FieldContent><FieldLabel>Google domain</FieldLabel><FieldDescription>Use your market’s Google for local results.</FieldDescription></FieldContent>
-              <Select value={s.googleDomain} onValueChange={(v) => set({ googleDomain: v })}>
-                <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
-                <SelectContent>{(GOOGLE_DOMAINS as string[]).map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
-              </Select>
-            </Field>
-            <FieldSeparator />
-            <Field orientation="responsive">
-              <FieldContent><FieldLabel>Language and country</FieldLabel><FieldDescription>Optional hl and gl parameters, e.g. en / us or de / de.</FieldDescription></FieldContent>
-              <div className="flex gap-2">{text('hl', 'hl')}{text('gl', 'gl')}</div>
-            </Field>
-            <FieldSeparator />
-            <Field orientation="responsive">
-              <FieldContent><FieldLabel>Open searches in</FieldLabel></FieldContent>
-              <Select value={s.openIn} onValueChange={(v) => set({ openIn: v as Settings['openIn'] })}>
-                <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="tab">A new tab</SelectItem><SelectItem value="current">The current tab</SelectItem></SelectContent>
-              </Select>
-            </Field>
-            <FieldSeparator />
-            <Field orientation="responsive">
-              <FieldContent>
-                <FieldLabel>Seconds between searches</FieldLabel>
-                <FieldDescription>Asks before searching again sooner than this. 0 turns the check off.</FieldDescription>
-              </FieldContent>
-              {num('minGapSec', 0, 600)}
-            </Field>
-          </FieldGroup>
-        </CardContent>
-      </Card>
+      <Group title="Search">
+        <SettingRow label="Google domain" info="Use your market’s Google for local results.">
+          <Select value={s.googleDomain} onValueChange={(v) => set({ googleDomain: v })}>
+            <SelectTrigger size="sm" className="w-40"><SelectValue /></SelectTrigger>
+            <SelectContent>{(GOOGLE_DOMAINS as string[]).map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
+          </Select>
+        </SettingRow>
+        <SettingRow label="Language · country" info="Optional hl and gl parameters, e.g. en · us or de · de.">
+          {text('hl', 'hl')}{text('gl', 'gl')}
+        </SettingRow>
+        <SettingRow label="Open searches in">
+          <Select value={s.openIn} onValueChange={(v) => set({ openIn: v as Settings['openIn'] })}>
+            <SelectTrigger size="sm" className="w-40"><SelectValue /></SelectTrigger>
+            <SelectContent><SelectItem value="tab">New tab</SelectItem><SelectItem value="current">Current tab</SelectItem></SelectContent>
+          </Select>
+        </SettingRow>
+        <SettingRow label="Pause between searches" htmlFor="gap" info="Seconds. Asks before searching again sooner, to avoid Google CAPTCHAs. 0 turns it off.">
+          {num('minGapSec', 0, 600, 'gap')}
+        </SettingRow>
+      </Group>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Saving & scanning</CardTitle>
-          <CardDescription>Scans fetch each saved site’s homepage plus its imprint, contact and about pages.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <FieldGroup>
-            <Field orientation="horizontal">
-              <FieldContent>
-                <FieldTitle>One entry per domain</FieldTitle>
-                <FieldDescription>Skip results from a domain you already saved.</FieldDescription>
-              </FieldContent>
-              <Switch checked={s.dedupeByDomain} onCheckedChange={(v) => set({ dedupeByDomain: v })} aria-label="One entry per domain" />
-            </Field>
-            <FieldSeparator />
-            <Field orientation="horizontal">
-              <FieldContent>
-                <FieldTitle>Scan automatically</FieldTitle>
-                <FieldDescription>Look for emails and old-site signals as soon as a site is saved.</FieldDescription>
-              </FieldContent>
-              <Switch checked={s.autoScan} onCheckedChange={(v) => set({ autoScan: v })} aria-label="Scan automatically" />
-            </Field>
-            <FieldSeparator />
-            <Field orientation="responsive">
-              <FieldContent><FieldLabel>Pages per site</FieldLabel><FieldDescription>1–10. More pages find more emails but take longer.</FieldDescription></FieldContent>
-              {num('scanMaxPages', 1, 10)}
-            </Field>
-            <FieldSeparator />
-            <Field orientation="responsive">
-              <FieldContent><FieldLabel>Sites scanned in parallel</FieldLabel></FieldContent>
-              {num('scanConcurrency', 1, 6)}
-            </Field>
-          </FieldGroup>
-        </CardContent>
-      </Card>
+      <Group title="Saving & scanning">
+        <SettingRow label="One entry per domain" htmlFor="dedupe" info="Skip results from a domain you already saved.">
+          <Switch id="dedupe" checked={s.dedupeByDomain} onCheckedChange={(v) => set({ dedupeByDomain: v })} />
+        </SettingRow>
+        <SettingRow label="Scan on save" htmlFor="autoscan" info="Look for emails and old-site signals as soon as a site is saved.">
+          <Switch id="autoscan" checked={s.autoScan} onCheckedChange={(v) => set({ autoScan: v })} />
+        </SettingRow>
+        <SettingRow label="Pages per site" htmlFor="pages" info="1–10. Homepage first, then imprint, contact and about pages.">
+          {num('scanMaxPages', 1, 10, 'pages')}
+        </SettingRow>
+        <SettingRow label="Parallel scans" htmlFor="par">{num('scanConcurrency', 1, 6, 'par')}</SettingRow>
+      </Group>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Data</CardTitle>
-          <CardDescription>
-            Everything is stored locally in this browser profile. Nothing leaves it except the Google searches you open and the fetches of the sites you save.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={async () => download(`searchquest-backup-${today()}.json`, JSON.stringify(await store.exportAll(), null, 1), 'application/json')}>
-            <FileJsonIcon data-icon="inline-start" />Export backup
+      <Group title="Data">
+        <SettingRow label="Backup" info="Everything is stored locally in this browser profile.">
+          <Button size="sm" variant="outline" onClick={async () => download(`searchquest-backup-${today()}.json`, JSON.stringify(await store.exportAll(), null, 1), 'application/json')}>
+            <FileJsonIcon data-icon="inline-start" />Export
           </Button>
-          <Button variant="outline" onClick={() => fileRef.current?.click()}><UploadIcon data-icon="inline-start" />Import backup</Button>
+          <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()}><UploadIcon data-icon="inline-start" />Import</Button>
+        </SettingRow>
+        <SettingRow label="All sites as CSV">
           <Button
-            variant="outline"
+            size="sm" variant="outline"
             onClick={async () => {
               const [sites, quests] = await Promise.all([store.sites.list() as Promise<Site[]>, store.quests.list() as Promise<Quest[]>]);
               download(`searchquest-sites-${today()}.csv`, sitesCsv(sites, new Map(quests.map((q) => [q.id, q]))), 'text/csv;charset=utf-8');
             }}
           >
-            <DownloadIcon data-icon="inline-start" />Export all sites (CSV)
+            <DownloadIcon data-icon="inline-start" />Export
           </Button>
-          <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) importFile(f); }} />
-        </CardContent>
-      </Card>
+        </SettingRow>
+      </Group>
+      <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) importFile(f); }} />
 
-      <Card className="border-destructive/40">
-        <CardHeader>
-          <CardTitle className="text-destructive">Danger zone</CardTitle>
-          <CardDescription>Export a backup first if you might need the data again.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
+      <Collapsible className="flex flex-col gap-3">
+        <CollapsibleTrigger className="group -ml-1 flex h-7 items-center gap-1.5 self-start rounded-md px-1 text-sm font-medium text-muted-foreground outline-none hover:text-destructive focus-visible:ring-2 focus-visible:ring-ring/50">
+          <ChevronRightIcon className="size-4 transition-transform group-data-[state=open]:rotate-90" />Danger zone
+        </CollapsibleTrigger>
+        <CollapsibleContent className="flex flex-wrap gap-2">
           <Button
-            variant="destructive"
+            size="sm" variant="destructive"
             onClick={async () => {
               const sites = (await store.sites.list()) as Site[];
-              if (!(await confirmDialog({ title: `Delete all ${sites.length} sites?`, description: 'Quests, templates and blocks stay.', confirmLabel: 'Delete all sites', destructive: true }))) return;
+              if (!(await confirmDialog({ title: `Delete all ${sites.length} sites?`, description: 'Quests, templates and blocks stay.', confirmLabel: 'Delete all', destructive: true }))) return;
               await bg('sites:delete', { ids: sites.map((x) => x.id) });
               toast.success('All sites deleted');
             }}
@@ -169,10 +145,9 @@ export function SettingsView() {
             <Trash2Icon data-icon="inline-start" />Delete all sites
           </Button>
           <Button
-            variant="outline"
-            className="text-destructive"
+            size="sm" variant="outline" className="text-destructive hover:text-destructive"
             onClick={async () => {
-              if (!(await confirmDialog({ title: 'Reset everything?', description: 'Deletes all sites, quests, templates, blocks and settings, then restores the defaults.', confirmLabel: 'Reset everything', destructive: true }))) return;
+              if (!(await confirmDialog({ title: 'Reset everything?', description: 'Deletes all data and restores the defaults.', confirmLabel: 'Reset', destructive: true }))) return;
               await chrome.storage.local.clear();
               await store.seedDefaults();
               location.reload();
@@ -180,11 +155,12 @@ export function SettingsView() {
           >
             <RotateCcwIcon data-icon="inline-start" />Reset everything
           </Button>
-        </CardContent>
-      </Card>
+        </CollapsibleContent>
+      </Collapsible>
 
-      <p className="text-xs text-muted-foreground">
-        Outreach note: US cold email (CAN-SPAM) needs a real sender address and an opt-out. Germany (UWG §7) generally requires prior consent for advertising email, B2B included. Check the rules for your market. This is not legal advice.
+      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        Outreach rules differ by country
+        <InfoTip>US cold email (CAN-SPAM) needs a real sender address and an opt-out. Germany (UWG §7) generally requires prior consent for advertising email, B2B included. Not legal advice.</InfoTip>
       </p>
     </>
   );

@@ -13,7 +13,7 @@ createRoot(document.getElementById('root')!).render(
       <TooltipProvider delayDuration={300}>
         <App />
         <ConfirmHost />
-        <Toaster position="bottom-center" richColors closeButton />
+        <Toaster position="top-center" richColors />
       </TooltipProvider>
     </ThemeProvider>
   </StrictMode>,

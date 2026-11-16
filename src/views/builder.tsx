@@ -1,19 +1,19 @@
 import * as React from 'react';
 import { toast } from 'sonner';
 import {
-  CheckIcon, ChevronRightIcon, ChevronsUpDownIcon, CopyIcon, EraserIcon, FileStackIcon, MapPlusIcon, PencilLineIcon,
-  SaveIcon, SearchIcon, XIcon,
+  CalendarRangeIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, CopyIcon, EraserIcon, FileStackIcon,
+  MapPlusIcon, PencilLineIcon, SaveIcon, SearchIcon, Settings2Icon, TriangleAlertIcon, XIcon,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ButtonGroup } from '@/components/ui/button-group';
-import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
-} from '@/components/ui/dialog';
-import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field';
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '@/components/ui/input-group';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -21,8 +21,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Alert, AlertAction, AlertDescription } from '@/components/ui/alert';
-import { ChipInput } from '@/components/common';
+import { Alert, AlertAction, AlertTitle } from '@/components/ui/alert';
+import { ChipInput, IconAction, InfoTip, SlotDot } from '@/components/common';
 import { confirmDialog } from '@/components/confirm';
 import { copyText, openSearch, store } from '@/lib/ext';
 import { useNav } from '@/lib/nav';
@@ -34,6 +34,12 @@ import {
 import { CITY_LISTS } from '@ext/defaults.js';
 import { lines, uid, uniq } from '@ext/util.js';
 import type { Block, BuilderState, Draft, DraftMeta, Quest, SlotKey, Template } from '@/types';
+
+type SlotDef = { key: SlotKey; label: string; placeholder: string; hint: string };
+const SLOT_DEFS = SLOTS as SlotDef[];
+const PRIMARY: SlotKey[] = ['profession', 'location', 'signals', 'excludes'];
+const LABELS = SLOT_LABEL as Record<string, string>;
+const CITIES = CITY_LISTS as Record<string, string[]>;
 
 // ----------------------------------------------------------------- draft shared with other views
 
@@ -80,15 +86,13 @@ export function BuilderView() {
   const [draft, setDraftState] = React.useState<Draft | null>(pendingDraft);
   const [blocks] = useExtData(() => store.getBlocks() as Promise<Block[]>, (k) => k === 'blocks');
   const [templates] = useExtData(() => store.templates.list() as Promise<Template[]>, (k) => k.startsWith('tpl:'));
-  const [questOpen, setQuestOpen] = React.useState(false);
-  const [tplOpen, setTplOpen] = React.useState(false);
+  const [dialog, setDialog] = React.useState<'quest' | 'template' | null>(null);
 
   React.useEffect(() => {
     if (pendingDraft) { pendingDraft = null; return; }
     (store.getDraft() as Promise<Draft | null>).then((d) => setDraftState(d ? { state: normalizeState(d.state), meta: d.meta || {} } : { state: emptyState(), meta: {} }));
   }, []);
 
-  // Persist every change (debounced) so the panel and the full view resume where you left off.
   React.useEffect(() => {
     if (!draft) return;
     const t = setTimeout(() => store.setDraft(draft), 250);
@@ -100,21 +104,10 @@ export function BuilderView() {
   const meta = draft.meta;
   const setSt = (next: BuilderState) => setDraftState((d) => ({ ...d!, state: next }));
   const patch = (p: Partial<BuilderState>) => setSt({ ...st, ...p });
-  const query = buildQuery(st);
-  const words = countWords(query);
-
-  const clear = async () => {
-    if (query && !(await confirmDialog({ title: 'Clear the builder?', description: 'This empties every slot.', confirmLabel: 'Clear', destructive: true }))) return;
-    setDraftState({ state: emptyState(), meta: {} });
-  };
 
   const saveToQuest = async () => {
     const q = (await store.quests.get(meta.questId!)) as Quest | null;
-    if (!q) {
-      toast.error('That quest no longer exists.');
-      setDraftState({ ...draft, meta: {} });
-      return;
-    }
+    if (!q) { toast.error('That quest no longer exists.'); setDraftState({ ...draft, meta: {} }); return; }
     await store.quests.put({ ...q, state: structuredClone(st), updatedAt: Date.now() });
     toast.success('Quest updated');
     go('quests', { questId: q.id });
@@ -122,59 +115,110 @@ export function BuilderView() {
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2">
-        <TemplatePicker
-          templates={templates || []}
-          open={tplOpen}
-          onOpenChange={setTplOpen}
-          onPick={(t) => {
-            setDraftState({ state: normalizeState(structuredClone(t.state)), meta: { templateName: t.name } });
-            setTplOpen(false);
-            toast.success(`Loaded “${t.name}”`);
-          }}
-        />
-        <Button variant="ghost" size="sm" onClick={clear}><EraserIcon data-icon="inline-start" />Clear</Button>
-      </div>
-
       {meta.questId ? (
         <Alert>
           <PencilLineIcon />
-          <AlertDescription>Editing quest “{meta.questName}”. Changes stay here until you save them.</AlertDescription>
-          <AlertAction className="flex gap-2">
-            <Button size="xs" onClick={saveToQuest}>Save to quest</Button>
-            <Button size="xs" variant="outline" onClick={() => setDraftState({ ...draft, meta: {} })}>Stop editing</Button>
+          <AlertTitle className="truncate">Editing “{meta.questName}”</AlertTitle>
+          <AlertAction className="flex gap-1.5">
+            <Button size="xs" onClick={saveToQuest}>Save</Button>
+            <IconAction label="Stop editing" icon={XIcon} size="icon-xs" onClick={() => setDraftState({ ...draft, meta: {} })} />
           </AlertAction>
         </Alert>
       ) : null}
 
-      <div className="grid items-start gap-4 @4xl/main:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+      <div className="grid items-start gap-4 @4xl/main:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
         <div className="flex min-w-0 flex-col gap-4">
-          <QueryPreview st={st} query={query} words={words} onQuest={() => setQuestOpen(true)} />
+          <QueryCard
+            st={st}
+            templates={templates || []}
+            onPick={(t) => { setDraftState({ state: normalizeState(structuredClone(t.state)), meta: { templateName: t.name } }); toast.success(`Loaded “${t.name}”`); }}
+            onClear={async () => {
+              if (buildQuery(st) && !(await confirmDialog({ title: 'Clear every slot?', confirmLabel: 'Clear', destructive: true }))) return;
+              setDraftState({ state: emptyState(), meta: {} });
+            }}
+            onSave={setDialog}
+          />
           <SlotsCard st={st} setSt={setSt} patch={patch} />
         </div>
         <Palette blocks={blocks || []} st={st} setSt={setSt} onManage={() => go('library')} />
       </div>
 
-      <SaveQuestDialog open={questOpen} onOpenChange={setQuestOpen} st={st} onCreated={(id) => go('quests', { questId: id })} />
+      <SaveQuestDialog open={dialog === 'quest'} onOpenChange={(o) => setDialog(o ? 'quest' : null)} st={st} onCreated={(id) => go('quests', { questId: id })} />
+      <SaveTemplateDialog open={dialog === 'template'} onOpenChange={(o) => setDialog(o ? 'template' : null)} st={st} />
     </>
   );
 }
 
-// ----------------------------------------------------------------- pieces
+// ----------------------------------------------------------------- query card
 
-function TemplatePicker({ templates, open, onOpenChange, onPick }: {
-  templates: Template[]; open: boolean; onOpenChange: (o: boolean) => void; onPick: (t: Template) => void;
+function QueryCard({ st, templates, onPick, onClear, onSave }: {
+  st: BuilderState; templates: Template[]; onPick: (t: Template) => void; onClear: () => void; onSave: (d: 'quest' | 'template') => void;
 }) {
+  const query = buildQuery(st);
+  const words = countWords(query);
+  const over = words > 32;
+  return (
+    <Card className="gap-3 py-3 shadow-sm @4xl/main:sticky @4xl/main:top-[5.5rem] @4xl/main:z-20">
+      <CardHeader className="flex items-center gap-2 px-3">
+        <CardTitle className="font-heading text-base">Query</CardTitle>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge
+              variant="secondary"
+              className={cn('tabular-nums', over ? 'bg-destructive/15 text-destructive' : words > 26 ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300' : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300')}
+            >
+              {over ? <TriangleAlertIcon /> : null}{words}/32
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-64">
+            {over ? 'Over Google’s ~32-word limit: the last terms (usually exclusions) get ignored.' : 'Words used of Google’s ~32-word limit'}
+          </TooltipContent>
+        </Tooltip>
+        <div className="ml-auto flex items-center gap-0.5">
+          <TemplatePicker templates={templates} onPick={onPick} />
+          <IconAction label="Clear all slots" icon={EraserIcon} disabled={!query} onClick={onClear} />
+        </div>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3 px-3">
+        <pre
+          className={cn(
+            'max-h-36 min-h-14 overflow-auto rounded-md bg-muted/70 px-3 py-2.5 font-mono text-[12.5px] leading-relaxed whitespace-pre-wrap break-words',
+            !query && 'flex items-center font-sans text-sm text-muted-foreground',
+          )}
+        >
+          {query || 'Load a template or click blocks'}
+        </pre>
+        <div className="flex items-center gap-1.5">
+          <Button disabled={!query} onClick={() => openSearch(query)} className="flex-1 @md/main:flex-none">
+            <SearchIcon data-icon="inline-start" />Search Google
+          </Button>
+          <IconAction label="Copy query" icon={CopyIcon} variant="outline" size="icon" disabled={!query} onClick={() => copyText(query)} />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" disabled={!query}><SaveIcon data-icon="inline-start" />Save<ChevronDownIcon data-icon="inline-end" /></Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => onSave('quest')}><MapPlusIcon />As quest…</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onSave('template')}><FileStackIcon />As template…</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function TemplatePicker({ templates, onPick }: { templates: Template[]; onPick: (t: Template) => void }) {
+  const [open, setOpen] = React.useState(false);
   const groups = uniq(templates.map((t) => t.region || 'Custom')).sort() as string[];
   return (
-    <Popover open={open} onOpenChange={onOpenChange}>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="outline" role="combobox" aria-label="Load a template" aria-expanded={open} className="w-64 max-w-full justify-between font-normal">
-          <span className="flex items-center gap-2 truncate"><FileStackIcon className="text-muted-foreground" />Load a template…</span>
-          <ChevronsUpDownIcon className="opacity-50" />
+        <Button variant="ghost" size="sm" role="combobox" aria-label="Load a template" aria-expanded={open} className="text-muted-foreground">
+          <FileStackIcon data-icon="inline-start" />Templates<ChevronDownIcon data-icon="inline-end" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-80 p-0" align="start">
+      <PopoverContent className="w-80 p-0" align="end">
         <Command>
           <CommandInput placeholder="Search templates…" />
           <CommandList className="max-h-80">
@@ -182,11 +226,8 @@ function TemplatePicker({ templates, open, onOpenChange, onPick }: {
             {groups.map((g) => (
               <CommandGroup key={g} heading={g}>
                 {templates.filter((t) => (t.region || 'Custom') === g).sort((a, b) => a.name.localeCompare(b.name)).map((t) => (
-                  <CommandItem key={t.id} value={`${t.name} ${g} ${t.description || ''}`} onSelect={() => onPick(t)}>
-                    <div className="flex min-w-0 flex-col">
-                      <span className="truncate">{t.name}</span>
-                      {t.description ? <span className="truncate text-xs text-muted-foreground">{t.description}</span> : null}
-                    </div>
+                  <CommandItem key={t.id} value={`${t.name} ${g} ${t.description || ''}`} onSelect={() => { setOpen(false); onPick(t); }} title={t.description}>
+                    {t.name}
                   </CommandItem>
                 ))}
               </CommandGroup>
@@ -198,96 +239,75 @@ function TemplatePicker({ templates, open, onOpenChange, onPick }: {
   );
 }
 
-function QueryPreview({ st, query, words, onQuest }: { st: BuilderState; query: string; words: number; onQuest: () => void }) {
-  const [tplOpen, setTplOpen] = React.useState(false);
-  const tone = words > 32 ? 'destructive' : words > 26 ? 'warn' : 'ok';
+// ----------------------------------------------------------------- slots
+
+function SlotLabel({ slot, htmlFor, children, hint }: { slot: SlotKey | 'site' | 'extra'; htmlFor?: string; children: React.ReactNode; hint?: string }) {
   return (
-    <Card className="sticky top-[5.75rem] z-20 gap-3 py-4 shadow-sm">
-      <CardHeader className="px-4">
-        <CardTitle>Query</CardTitle>
-        <CardAction>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Badge
-                variant={tone === 'destructive' ? 'destructive' : 'secondary'}
-                className={cn('tabular-nums', tone === 'ok' && 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300', tone === 'warn' && 'bg-amber-500/15 text-amber-700 dark:text-amber-300')}
-              >
-                {words} / 32 words
-              </Badge>
-            </TooltipTrigger>
-            <TooltipContent>Google reads about 32 words per query and silently drops the rest.</TooltipContent>
-          </Tooltip>
-        </CardAction>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3 px-4">
-        <pre className={cn('max-h-40 overflow-auto rounded-md bg-muted px-3 py-2.5 font-mono text-[12.5px] leading-relaxed whitespace-pre-wrap break-words', !query && 'font-sans text-sm text-muted-foreground')}>
-          {query || 'Pick a template, or click building blocks: a niche, a location and a few old-site signals.'}
-        </pre>
-        {words > 32 ? (
-          <p className="text-sm text-destructive">Over Google’s ~32-word limit. Trailing terms (usually the -site: exclusions) get ignored. Drop some OR terms or exclusions.</p>
-        ) : null}
-        <div className="flex flex-wrap gap-2">
-          <Button disabled={!query} onClick={() => openSearch(query)}><SearchIcon data-icon="inline-start" />Search Google</Button>
-          <ButtonGroup>
-            <Button variant="outline" disabled={!query} onClick={() => copyText(query)}><CopyIcon data-icon="inline-start" />Copy</Button>
-            <Button variant="outline" disabled={!query} onClick={onQuest}><MapPlusIcon data-icon="inline-start" />Save as quest</Button>
-            <Button variant="outline" disabled={!query} onClick={() => setTplOpen(true)}><SaveIcon data-icon="inline-start" />Template</Button>
-          </ButtonGroup>
-        </div>
-      </CardContent>
-      <SaveTemplateDialog open={tplOpen} onOpenChange={setTplOpen} query={query} st={st} />
-    </Card>
+    <div className="flex h-6 items-center gap-2">
+      <SlotDot slot={slot} />
+      <FieldLabel htmlFor={htmlFor}>{children}</FieldLabel>
+      {hint ? <InfoTip>{hint}</InfoTip> : null}
+    </div>
   );
 }
 
 function SlotsCard({ st, setSt, patch }: { st: BuilderState; setSt: (s: BuilderState) => void; patch: (p: Partial<BuilderState>) => void }) {
+  const advancedCount = st.required.length + (st.site ? 1 : 0) + (st.extra ? 1 : 0);
+  const [more, setMore] = React.useState(advancedCount > 0);
+  React.useEffect(() => { if (advancedCount) setMore(true); }, [advancedCount]);
+  const def = (k: SlotKey) => SLOT_DEFS.find((s) => s.key === k)!;
+
+  const chipField = (k: SlotKey, extra?: React.ReactNode) => {
+    const d = def(k);
+    return (
+      <Field key={k} className="gap-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <SlotLabel slot={k} htmlFor={'slot-' + k} hint={d.hint}>{d.label}</SlotLabel>
+          {extra}
+        </div>
+        <ChipInput id={'slot-' + k} value={st[k]} placeholder={d.placeholder} format={k === 'excludes' ? normalizeDomain : undefined} onChange={(v) => patch({ [k]: v })} />
+      </Field>
+    );
+  };
+
   return (
-    <Card className="gap-4">
-      <CardHeader>
-        <CardTitle>Building slots</CardTitle>
-        <CardDescription>Type and press Enter, paste a list, or click blocks.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <FieldGroup className="gap-5">
-          {(SLOTS as { key: SlotKey; label: string; placeholder: string; hint: string }[]).map((slot) => (
-            <Field key={slot.key} className="gap-1.5">
-              <div className="flex items-center justify-between gap-2">
-                <FieldLabel htmlFor={'slot-' + slot.key}>{slot.label}</FieldLabel>
-                {slot.key === 'profession' ? (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                        <Switch size="sm" checked={st.intitle} onCheckedChange={(v) => patch({ intitle: v })} />
-                        intitle:
-                      </label>
-                    </TooltipTrigger>
-                    <TooltipContent>Only pages with the niche in their title, mostly company homepages</TooltipContent>
-                  </Tooltip>
-                ) : null}
+    <Card className="gap-0 py-4">
+      <CardContent className="px-4">
+        <FieldGroup className="gap-4">
+          {PRIMARY.map((k) => chipField(k,
+            k === 'profession' ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <label className="flex h-6 cursor-pointer items-center gap-1.5 font-mono text-xs text-muted-foreground">
+                    intitle:<Switch size="sm" checked={st.intitle} onCheckedChange={(v) => patch({ intitle: v })} />
+                  </label>
+                </TooltipTrigger>
+                <TooltipContent>Only pages with the niche in their title (company homepages)</TooltipContent>
+              </Tooltip>
+            ) : k === 'signals' ? (
+              <YearPopover onAdd={(terms) => setSt({ ...st, signals: uniq([...st.signals, ...terms]) as string[] })} />
+            ) : null))}
+
+          <Collapsible open={more} onOpenChange={setMore}>
+            <CollapsibleTrigger className="group -ml-1 flex h-7 items-center gap-1.5 rounded-md px-1 text-sm font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50">
+              <ChevronRightIcon className="size-4 transition-transform group-data-[state=open]:rotate-90" />
+              More options
+              {advancedCount ? <Badge variant="secondary" className="h-4.5 px-1.5 tabular-nums">{advancedCount}</Badge> : null}
+            </CollapsibleTrigger>
+            <CollapsibleContent className="flex flex-col gap-4 pt-3">
+              {chipField('required')}
+              <div className="grid gap-4 @2xl/main:grid-cols-2">
+                <Field className="gap-1.5">
+                  <SlotLabel slot="site" htmlFor="site" hint="Becomes site:… e.g. weebly.com finds owners who never bought a domain.">Site filter</SlotLabel>
+                  <Input id="site" value={st.site} placeholder=".de · weebly.com" onChange={(e) => patch({ site: e.target.value })} />
+                </Field>
+                <Field className="gap-1.5">
+                  <SlotLabel slot="extra" htmlFor="extra" hint="Inserted exactly as typed.">Raw operators</SlotLabel>
+                  <Input id="extra" value={st.extra} placeholder='inurl:"…"' className="font-mono text-xs" onChange={(e) => patch({ extra: e.target.value })} />
+                </Field>
               </div>
-              <ChipInput
-                id={'slot-' + slot.key}
-                value={st[slot.key]}
-                placeholder={slot.placeholder}
-                format={slot.key === 'excludes' ? normalizeDomain : undefined}
-                onChange={(v) => patch({ [slot.key]: v })}
-              />
-              {slot.key === 'signals' ? <YearHelper onAdd={(terms) => setSt({ ...st, signals: uniq([...st.signals, ...terms]) })} /> : null}
-              <FieldDescription className="text-xs">{slot.hint}</FieldDescription>
-            </Field>
-          ))}
-          <div className="grid gap-5 @2xl/main:grid-cols-2">
-            <Field className="gap-1.5">
-              <FieldLabel htmlFor="site">Site filter</FieldLabel>
-              <Input id="site" value={st.site} placeholder=".de · weebly.com" onChange={(e) => patch({ site: e.target.value })} />
-              <FieldDescription className="text-xs">Becomes site:… A free subdomain means the owner never bought a domain.</FieldDescription>
-            </Field>
-            <Field className="gap-1.5">
-              <FieldLabel htmlFor="extra">Raw operators</FieldLabel>
-              <Input id="extra" value={st.extra} placeholder='inurl:"index.php?option=com_content"' className="font-mono text-xs" onChange={(e) => patch({ extra: e.target.value })} />
-              <FieldDescription className="text-xs">Inserted exactly as typed.</FieldDescription>
-            </Field>
-          </div>
+            </CollapsibleContent>
+          </Collapsible>
         </FieldGroup>
       </CardContent>
     </Card>
@@ -296,26 +316,43 @@ function SlotsCard({ st, setSt, patch }: { st: BuilderState; setSt: (s: BuilderS
 
 const yearDefaults = { prefix: 'Copyright', from: 2010, to: 2018, step: 2 };
 
-function YearHelper({ onAdd }: { onAdd: (terms: string[]) => void }) {
+function YearPopover({ onAdd }: { onAdd: (terms: string[]) => void }) {
+  const [open, setOpen] = React.useState(false);
   const [y, setY] = React.useState(yearDefaults);
   const set = (p: Partial<typeof y>) => setY((cur) => Object.assign(yearDefaults, { ...cur, ...p }));
-  const num = (k: 'from' | 'to' | 'step', label: string, w = 'w-[4.5rem]') => (
-    <Input type="number" aria-label={label} className={cn('h-7 px-2 text-xs', w)} value={y[k]} onChange={(e) => set({ [k]: +e.target.value })} />
-  );
+  const preview = yearTerms(y.from, y.to, y.step, y.prefix);
   return (
-    <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-      <span>Add years</span>
-      <Select value={y.prefix} onValueChange={(v) => set({ prefix: v })}>
-        <SelectTrigger size="sm" className="h-7 w-auto text-xs"><SelectValue /></SelectTrigger>
-        <SelectContent>
-          {['Copyright', 'last updated', 'letzte Aktualisierung', 'Stand'].map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-        </SelectContent>
-      </Select>
-      {num('from', 'From year')}<span>to</span>{num('to', 'To year')}<span>every</span>{num('step', 'Step', 'w-14')}
-      <Button size="xs" variant="secondary" onClick={() => onAdd(yearTerms(y.from, y.to, y.step, y.prefix))}>Add</Button>
-    </div>
+    <Popover open={open} onOpenChange={setOpen}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
+            <Button variant="ghost" size="xs" className="text-muted-foreground"><CalendarRangeIcon data-icon="inline-start" />Years</Button>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent>Add a range of years</TooltipContent>
+      </Tooltip>
+      <PopoverContent align="end" className="flex w-72 flex-col gap-3">
+        <Select value={y.prefix} onValueChange={(v) => set({ prefix: v })}>
+          <SelectTrigger size="sm" className="w-full"><SelectValue /></SelectTrigger>
+          <SelectContent>{['Copyright', 'last updated', 'letzte Aktualisierung', 'Stand'].map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent>
+        </Select>
+        <div className="grid grid-cols-[1fr_1fr_4rem] gap-2">
+          {([['from', 'From'], ['to', 'To'], ['step', 'Step']] as const).map(([k, l]) => (
+            <Field key={k} className="gap-1">
+              <FieldLabel className="text-xs text-muted-foreground">{l}</FieldLabel>
+              <Input type="number" className="h-8" value={y[k]} onChange={(e) => set({ [k]: +e.target.value })} />
+            </Field>
+          ))}
+        </div>
+        <Button size="sm" disabled={!preview.length} onClick={() => { onAdd(preview); setOpen(false); }}>
+          Add {preview.length} term{preview.length === 1 ? '' : 's'}
+        </Button>
+      </PopoverContent>
+    </Popover>
   );
 }
+
+// ----------------------------------------------------------------- palette
 
 function Palette({ blocks, st, setSt, onManage }: { blocks: Block[]; st: BuilderState; setSt: (s: BuilderState) => void; onManage: () => void }) {
   const [filter, setFilter] = React.useState('');
@@ -327,22 +364,22 @@ function Palette({ blocks, st, setSt, onManage }: { blocks: Block[]; st: Builder
     cats.get(b.cat)!.push(b);
   }
   const toggleCat = (cat: string, on: boolean) => {
-    const next = on ? uniq([...open, cat]) : open.filter((c) => c !== cat);
+    const next = on ? uniq([...open, cat]) as string[] : open.filter((c) => c !== cat);
     setOpen(next);
     try { localStorage.setItem('sq.openCats', JSON.stringify(next)); } catch { /* storage blocked */ }
   };
 
   return (
-    <Card className="gap-3 @4xl/main:sticky @4xl/main:top-[5.75rem]">
-      <CardHeader>
-        <CardTitle>Building blocks</CardTitle>
-        <CardDescription>Click to add to its slot, click again to remove.</CardDescription>
-        <CardAction><Button variant="link" size="sm" className="h-auto p-0" onClick={onManage}>Manage</Button></CardAction>
+    <Card className="gap-3 py-3 @4xl/main:sticky @4xl/main:top-[5.5rem]">
+      <CardHeader className="flex items-center gap-2 px-3">
+        <CardTitle className="font-heading text-base">Blocks</CardTitle>
+        <InfoTip>Click a block to add it to the slot with the same colour. Click again to remove it.</InfoTip>
+        <IconAction label="Manage blocks" icon={Settings2Icon} className="ml-auto" onClick={onManage} />
       </CardHeader>
-      <CardContent className="flex flex-col gap-1 @4xl/main:max-h-[calc(100svh-11rem)] @4xl/main:overflow-y-auto">
-        <InputGroup className="mb-2">
+      <CardContent className="flex flex-col px-3 @4xl/main:max-h-[calc(100svh-9.5rem)] @4xl/main:overflow-y-auto">
+        <InputGroup className="mb-1.5">
           <InputGroupAddon><SearchIcon /></InputGroupAddon>
-          <InputGroupInput placeholder="Filter blocks…" value={filter} onChange={(e) => setFilter(e.target.value)} />
+          <InputGroupInput placeholder="Filter blocks" value={filter} onChange={(e) => setFilter(e.target.value)} />
           {filter ? <InputGroupAddon align="inline-end"><InputGroupButton size="icon-xs" aria-label="Clear filter" onClick={() => setFilter('')}><XIcon /></InputGroupButton></InputGroupAddon> : null}
         </InputGroup>
         {[...cats.entries()].map(([cat, list]) => {
@@ -350,14 +387,16 @@ function Palette({ blocks, st, setSt, onManage }: { blocks: Block[]; st: Builder
           if (!shown.length) return null;
           const active = shown.filter((b) => isOn(st, b)).length;
           return (
-            <Collapsible key={cat} open={!!f || open.includes(cat)} onOpenChange={(o) => !f && toggleCat(cat, o)} className="border-t first:border-t-0">
-              <CollapsibleTrigger className="group flex w-full items-center gap-2 py-2 text-left text-sm font-medium outline-none hover:text-foreground focus-visible:underline">
-                <ChevronRightIcon className="size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-90" />
-                <span className="truncate">{cat}</span>
-                <span className="text-xs font-normal text-muted-foreground">→ {SLOT_LABEL[list[0].slot] || list[0].slot}</span>
-                {active ? <Badge className="ml-auto h-5 min-w-5 rounded-full px-1.5 tabular-nums">{active}</Badge> : null}
+            <Collapsible key={cat} open={!!f || open.includes(cat)} onOpenChange={(o) => !f && toggleCat(cat, o)}>
+              <CollapsibleTrigger className="group flex h-9 w-full items-center gap-2 rounded-md px-1 text-left text-sm outline-none hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring/50">
+                <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-90" />
+                <SlotDot slot={list[0].slot} label={LABELS[list[0].slot]} />
+                <span className="truncate font-medium">{cat}</span>
+                <span className={cn('ml-auto min-w-5 text-center text-xs tabular-nums', active ? 'rounded-full bg-primary px-1.5 font-medium text-primary-foreground' : 'text-muted-foreground')}>
+                  {active || shown.length}
+                </span>
               </CollapsibleTrigger>
-              <CollapsibleContent className="flex flex-wrap gap-1.5 pb-3 pl-6">
+              <CollapsibleContent className="flex flex-wrap gap-1.5 pt-1 pb-3 pl-7">
                 {shown.map((b) => {
                   const on = isOn(st, b);
                   return (
@@ -366,8 +405,8 @@ function Palette({ blocks, st, setSt, onManage }: { blocks: Block[]; st: Builder
                       size="xs"
                       variant={on ? 'default' : 'outline'}
                       aria-pressed={on}
-                      title={`${b.value} → ${SLOT_LABEL[b.slot] || b.slot}`}
-                      className="rounded-full font-normal"
+                      title={b.label !== b.value ? b.value : undefined}
+                      className={cn('rounded-full font-normal', !on && 'text-foreground/80')}
                       onClick={() => setSt(toggled(st, b))}
                     >
                       {on ? <CheckIcon data-icon="inline-start" /> : null}
@@ -390,60 +429,55 @@ function SaveQuestDialog({ open, onOpenChange, st, onCreated }: { open: boolean;
   const [name, setName] = React.useState('');
   const [locs, setLocs] = React.useState('');
   const [list, setList] = React.useState('none');
-  const [notes, setNotes] = React.useState('');
 
   React.useEffect(() => {
     if (!open) return;
     setName(defaultName(st, false));
     setLocs(st.location.join('\n'));
     setList('none');
-    setNotes('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  const values = uniq([...lines(locs), ...(CITIES[list] || [])]) as string[];
+
   const create = async (e: React.FormEvent) => {
     e.preventDefault();
-    const values = uniq([...lines(locs), ...((CITY_LISTS as Record<string, string[]>)[list] || [])]) as string[];
     const quest: Quest = {
-      id: uid(), name: name.trim() || 'Untitled quest', notes, state: structuredClone(st),
+      id: uid(), name: name.trim() || 'Untitled quest', notes: '', state: structuredClone(st),
       locations: values.map((value) => ({ id: uid(), value, status: 'pending', runAt: null, runs: 0 })),
       createdAt: Date.now(), updatedAt: Date.now(),
     };
     await store.quests.put(quest);
     onOpenChange(false);
-    toast.success('Quest created', { description: `${quest.locations.length || 'No'} locations` });
+    toast.success('Quest created');
     onCreated(quest.id);
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-md">
         <form onSubmit={create} className="flex flex-col gap-5">
-          <DialogHeader>
-            <DialogTitle>Save as quest</DialogTitle>
-            <DialogDescription>Run this query once per location and track which ones you’ve searched.</DialogDescription>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>New quest</DialogTitle></DialogHeader>
           <FieldGroup className="gap-4">
-            <Field><FieldLabel htmlFor="q-name">Quest name</FieldLabel><Input id="q-name" value={name} onChange={(e) => setName(e.target.value)} /></Field>
-            <Field>
-              <FieldLabel htmlFor="q-locs">Locations, one search per line</FieldLabel>
+            <Field className="gap-1.5"><FieldLabel htmlFor="q-name">Name</FieldLabel><Input id="q-name" value={name} onChange={(e) => setName(e.target.value)} /></Field>
+            <Field className="gap-1.5">
+              <div className="flex items-center gap-2">
+                <FieldLabel htmlFor="q-locs">Locations</FieldLabel>
+                <InfoTip>One search per line: each replaces the Location slot. Leave empty to run the query as built.</InfoTip>
+                <span className="ml-auto text-xs text-muted-foreground tabular-nums">{values.length}</span>
+              </div>
               <Textarea id="q-locs" rows={5} value={locs} onChange={(e) => setLocs(e.target.value)} placeholder={'Dayton, OH\n45402\nMontgomery County'} />
-              <FieldDescription>Each line replaces the Location slot. Leave empty to run the query exactly as built.</FieldDescription>
-            </Field>
-            <Field>
-              <FieldLabel>Also add a city list</FieldLabel>
               <Select value={list} onValueChange={setList}>
-                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectTrigger size="sm" className="w-full" aria-label="Add a city list"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  {Object.entries(CITY_LISTS as Record<string, string[]>).map(([k, v]) => <SelectItem key={k} value={k}>{k} ({v.length})</SelectItem>)}
+                  <SelectItem value="none">+ City list</SelectItem>
+                  {Object.entries(CITIES).map(([k, v]) => <SelectItem key={k} value={k}>{k} ({v.length})</SelectItem>)}
                 </SelectContent>
               </Select>
             </Field>
-            <Field><FieldLabel htmlFor="q-notes">Notes</FieldLabel><Textarea id="q-notes" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
           </FieldGroup>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
             <Button type="submit">Create quest</Button>
           </DialogFooter>
         </form>
@@ -452,7 +486,7 @@ function SaveQuestDialog({ open, onOpenChange, st, onCreated }: { open: boolean;
   );
 }
 
-function SaveTemplateDialog({ open, onOpenChange, query, st }: { open: boolean; onOpenChange: (o: boolean) => void; query: string; st: BuilderState }) {
+function SaveTemplateDialog({ open, onOpenChange, st }: { open: boolean; onOpenChange: (o: boolean) => void; st: BuilderState }) {
   const [name, setName] = React.useState('');
   const [group, setGroup] = React.useState('Custom');
   const [desc, setDesc] = React.useState('');
@@ -474,19 +508,18 @@ function SaveTemplateDialog({ open, onOpenChange, query, st }: { open: boolean; 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-md">
         <form onSubmit={save} className="flex flex-col gap-5">
-          <DialogHeader>
-            <DialogTitle>Save as template</DialogTitle>
-            <DialogDescription className="line-clamp-2 font-mono text-xs">{query}</DialogDescription>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>New template</DialogTitle></DialogHeader>
           <FieldGroup className="gap-4">
-            <Field><FieldLabel htmlFor="t-name">Name</FieldLabel><Input id="t-name" value={name} onChange={(e) => setName(e.target.value)} /></Field>
-            <Field><FieldLabel htmlFor="t-group">Group</FieldLabel><Input id="t-group" value={group} onChange={(e) => setGroup(e.target.value)} placeholder="US, DE, Custom…" /></Field>
-            <Field><FieldLabel htmlFor="t-desc">Description</FieldLabel><Textarea id="t-desc" rows={2} value={desc} onChange={(e) => setDesc(e.target.value)} /></Field>
+            <div className="grid grid-cols-[1fr_7rem] gap-3">
+              <Field className="gap-1.5"><FieldLabel htmlFor="t-name">Name</FieldLabel><Input id="t-name" value={name} onChange={(e) => setName(e.target.value)} /></Field>
+              <Field className="gap-1.5"><FieldLabel htmlFor="t-group">Group</FieldLabel><Input id="t-group" value={group} onChange={(e) => setGroup(e.target.value)} /></Field>
+            </div>
+            <Field className="gap-1.5"><FieldLabel htmlFor="t-desc">Description</FieldLabel><Textarea id="t-desc" rows={2} value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Optional" /></Field>
           </FieldGroup>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
             <Button type="submit">Save template</Button>
           </DialogFooter>
         </form>
